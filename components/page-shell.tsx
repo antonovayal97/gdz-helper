@@ -1,0 +1,30 @@
+"use client";
+
+import { useAuth } from "@/components/auth-context";
+import { BottomNav } from "@/components/navigation";
+
+/**
+ * Shared client wrapper for tab pages: renders children above the bottom nav
+ * and shows a lightweight splash while authentication is still in progress.
+ */
+export function PageShell({ children }: { children: React.ReactNode }) {
+  const { ready } = useAuth();
+
+  if (!ready) {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-4">
+        <div className="flex h-16 w-16 animate-pulse items-center justify-center rounded-3xl bg-accent/80 text-2xl">
+          📚
+        </div>
+        <p className="text-sm text-hint">Загружаем…</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto min-h-dvh w-full max-w-md">
+      {children}
+      <BottomNav />
+    </div>
+  );
+}

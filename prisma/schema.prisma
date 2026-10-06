@@ -1,0 +1,106 @@
+// GDZ — Telegram Mini App for solving school problems by photo
+// Schema: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  telegramId   String   @unique @map("telegram_id")
+  username     String?  @map("username")
+  firstName    String?  @map("first_name")
+  lastName     String?  @map("last_name")
+  photoUrl     String?  @map("photo_url")
+  balance      Int      @default(0) @map("balance")
+  referralCode String   @unique @map("referral_code")
+  referredBy   String?  @map("referred_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  solutions     Solution[]
+  payments      Payment[]
+  referralsMade Referral[] @relation("ReferralsMade")
+  referral      Referral? @relation("ReferredBy")
+
+  @@index([referredBy])
+  @@map("users")
+}
+
+model Solution {
+  id                String   @id @default(cuid())
+  userId            String   @map("user_id")
+  imageUrl          String   @map("image_url")
+  subject           String   @map("subject")
+  grade             Int?     @map("grade")
+  recognizedProblem String   @map("recognized_problem") @db.Text
+  answer            String   @map("answer") @db.Text
+  steps             Json     @map("steps")
+  explanationMode   String?  @map("explanation_mode")
+  provider          String?  @map("provider")
+  model             String?  @map("model")
+  inputTokens       Int?     @map("input_tokens")
+  outputTokens      Int?     @map("output_tokens")
+  estimatedCost     Float?   @map("estimated_cost")
+  latencyMs         Int?     @map("latency_ms")
+  confidence        Float?   @map("confidence")
+  aiStatus          String?  @map("ai_status")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@map("solutions")
+}
+
+model CreditPackage {
+  id        String   @id @default(cuid())
+  name      String   @map("name")
+  credits   Int      @map("credits")
+  price     Float    @map("price")
+  currency  String   @default("RUB") @map("currency")
+  active    Boolean  @default(true) @map("active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  payments Payment[]
+
+  @@map("credit_packages")
+}
+
+model Payment {
+  id                String   @id @default(cuid())
+  userId            String   @map("user_id")
+  packageId         String   @map("package_id")
+  amount            Float    @map("amount")
+  currency          String   @default("RUB") @map("currency")
+  status            String   @default("pending") @map("status") // pending | paid | failed | refunded
+  telegramPaymentId String?  @unique @map("telegram_payment_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  package CreditPackage @relation(fields: [packageId], references: [id])
+
+  @@index([userId, status])
+  @@index([status])
+  @@map("payments")
+}
+
+model Referral {
+  id             String   @id @default(cuid())
+  referrerId     String   @map("referrer_id")
+  referredUserId String   @unique @map("referred_user_id")
+  reward         Int      @map("reward")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  referrer     User @relation("ReferralsMade", fields: [referrerId], references: [id], onDelete: Cascade)
+  referredUser User @relation("ReferredBy", fields: [referredUserId], references: [id], onDelete: Cascade)
+
+  @@index([referrerId])
+  @@map("referrals")
+}
