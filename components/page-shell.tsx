@@ -1,14 +1,16 @@
 "use client";
 
 import { useAuth } from "@/components/auth-context";
+import { AuthScreen } from "@/components/auth-screen";
 import { BottomNav } from "@/components/navigation";
 
 /**
- * Shared client wrapper for tab pages: renders children above the bottom nav
- * and shows a lightweight splash while authentication is still in progress.
+ * Shared client wrapper for tab pages: renders children above the bottom nav,
+ * shows a lightweight splash while authentication is in progress, and an
+ * email/Telegram sign-in screen when there is no active session.
  */
 export function PageShell({ children }: { children: React.ReactNode }) {
-  const { ready } = useAuth();
+  const { ready, user } = useAuth();
 
   if (!ready) {
     return (
@@ -19,6 +21,10 @@ export function PageShell({ children }: { children: React.ReactNode }) {
         <p className="text-sm text-hint">Загружаем…</p>
       </div>
     );
+  }
+
+  if (!user) {
+    return <AuthScreen />;
   }
 
   return (

@@ -42,7 +42,7 @@ export function HistoryScreen() {
   }
 
   return (
-    <div className="animate-fade-in flex flex-col gap-4 px-5 pb-10 pt-6">
+    <div className="animate-fade-in flex flex-col gap-4 px-5 pb-nav pt-6">
       <div className="flex items-center gap-2">
         <History className="h-6 w-6 text-accent" />
         <h1 className="text-[26px] font-extrabold leading-tight">История</h1>

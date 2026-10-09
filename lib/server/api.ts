@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { ApiErrorBody } from "@/types";
 import { AuthError } from "./auth";
+import { InvalidInitDataError } from "@/lib/telegram/validate";
 import { ImageValidationError } from "./image";
 import { RateLimitError } from "./rate-limit";
 import { SolutionError } from "@/services/solution";
@@ -28,22 +29,33 @@ export function handleError(err: unknown): NextResponse<ApiErrorBody> {
     return jsonError(400, "VALIDATION_ERROR", err.issues[0]?.message ?? "Некорректные данные");
   }
   if (err instanceof AuthError) {
-    return jsonError(401, "UNAUTHORIZED", err.message);
+    const knownCodes: ApiErrorBody["error"]["code"][] = [
+      "INVALID_CREDENTIALS",
+      "EMAIL_ALREADY_USED",
+      "INVALID_INIT_DATA",
+    ];
+    const code = (knownCodes as string[]).includes(err.code) ? err.code : "UNAUTHORIZED";
+    const status = code === "EMAIL_ALREADY_USED" ? 409 : 401;
+    return jsonError(status, code as ApiErrorBody["error"]["code"], err.message);
+  }
+  if (err instanceof InvalidInitDataError) {
+    return jsonError(401, "INVALID_INIT_DATA", err.message);
   }
   if (err instanceof ImageValidationError) {
-    return jsonError(
-      err.code === "IMAGE_TOO_LARGE" ? 413 : 400,
-      err.code,
-      err.message,
-    );
+    return jsonError(err.code === "IMAGE_TOO_LARGE" ? 413 : 400, err.code, err.message);
   }
   if (err instanceof RateLimitError) {
-    return jsonError(429, "RATE_LIMITED", "Слишком много запросов. Попробуйте позже.");
+    return jsonError(
+      429,
+      "RATE_LIMITED",
+      err.friendlyMessage ?? "Слишком много запросов. Попробуйте позже.",
+    );
   }
   if (err instanceof SolutionError) {
     const map: Record<string, { status: number; code: ApiErrorBody["error"]["code"] }> = {
       INSUFFICIENT_CREDITS: { status: 402, code: "INSUFFICIENT_CREDITS" },
       PROBLEM_NOT_RECOGNIZED: { status: 422, code: "PROBLEM_NOT_RECOGNIZED" },
+      NOT_A_TASK: { status: 422, code: "NOT_A_TASK" },
       AI_TIMEOUT: { status: 504, code: "AI_TIMEOUT" },
       AI_ERROR: { status: 502, code: "AI_ERROR" },
     };

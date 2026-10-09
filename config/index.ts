@@ -39,22 +39,32 @@ export const config = {
     sessionTtlSeconds: 7 * 24 * 60 * 60,
     // welcome credits granted on first registration
     defaultBalance: num(process.env.DEFAULT_BALANCE, 5),
-    // dev-only: allow mock auth when running outside Telegram
-    allowMockAuth: bool(process.env.ALLOW_MOCK_AUTH, false) && !isProd,
   },
 
   ai: {
     provider: (process.env.AI_PROVIDER ?? "mock") as AIProviderName,
+    // Route cheap tasks (answer mode) to a cheaper model (e.g. Gemini 2.5 Flash Lite).
+    // Default: enabled. Set AI_CHEAP_MODE=false to always use the main model.
+    cheapMode: bool(process.env.AI_CHEAP_MODE, true),
     openrouter: {
+      name: "openrouter",
       apiKey: process.env.OPENROUTER_API_KEY ?? "",
-      model: process.env.OPENROUTER_MODEL ?? "openai/gpt-4o-mini",
+      model: process.env.OPENROUTER_MODEL ?? "qwen/qwen3-vl-235b-a22b-instruct",
+      cheapModel: process.env.OPENROUTER_CHEAP_MODEL ?? "google/gemini-2.5-flash-lite",
       baseUrl: process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",
     },
     bitcoincom: {
+      name: "bitcoincom",
       apiKey: process.env.BITCOINCOM_API_KEY ?? "",
-      model: process.env.BITCOINCOM_MODEL ?? "",
+      model: process.env.BITCOINCOM_MODEL ?? "qwen/qwen3-vl-235b-a22b-instruct",
+      cheapModel: process.env.BITCOINCOM_CHEAP_MODEL ?? "gemini-2.5-flash-lite",
+      baseUrl: process.env.BITCOINCOM_BASE_URL ?? "https://nano-gpt.com/api/v1",
     },
     timeoutMs: num(process.env.AI_TIMEOUT_MS, 120_000),
+    // Number of additional attempts after a transient network failure (0 = no retry).
+    retries: num(process.env.AI_RETRIES, 2),
+    // Base delay between retries, grows linearly (1s, 2s, 3s, ...).
+    retryDelayMs: num(process.env.AI_RETRY_DELAY_MS, 1000),
     // max image file size accepted for AI (after client-side optimization)
     maxImageBytes: 8 * 1024 * 1024,
     // max pixels (W*H) we allow through to the AI
@@ -88,5 +98,10 @@ export const config = {
 
   limits: {
     maxUploadBytes: 10 * 1024 * 1024, // hard cap for any uploaded photo
+
+    // Content-filter abuse guard: after this many "not a task" rejections
+    // within the window, new solve requests are paused until it resets.
+    nonTaskLimit: num(process.env.NON_TASK_LIMIT, 5),
+    nonTaskWindowMs: num(process.env.NON_TASK_WINDOW_MS, 60 * 60 * 1000),
   },
 } as const;

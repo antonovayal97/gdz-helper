@@ -12,7 +12,11 @@ datasource db {
 
 model User {
   id           String   @id @default(cuid())
-  telegramId   String   @unique @map("telegram_id")
+  // Account can be created either via Telegram Mini App (telegramId)
+  // or via email+password registration (email + passwordHash).
+  telegramId   String?  @unique @map("telegram_id")
+  email        String?  @unique
+  passwordHash String?  @map("password_hash")
   username     String?  @map("username")
   firstName    String?  @map("first_name")
   lastName     String?  @map("last_name")
@@ -23,10 +27,11 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  solutions     Solution[]
-  payments      Payment[]
-  referralsMade Referral[] @relation("ReferralsMade")
-  referral      Referral? @relation("ReferredBy")
+  solutions           Solution[]
+  payments            Payment[]
+  referralsMade       Referral[]           @relation("ReferralsMade")
+  referral            Referral?            @relation("ReferredBy")
+  balanceTransactions BalanceTransaction[]
 
   @@index([referredBy])
   @@map("users")
@@ -37,7 +42,6 @@ model Solution {
   userId            String   @map("user_id")
   imageUrl          String   @map("image_url")
   subject           String   @map("subject")
-  grade             Int?     @map("grade")
   recognizedProblem String   @map("recognized_problem") @db.Text
   answer            String   @map("answer") @db.Text
   steps             Json     @map("steps")
@@ -89,6 +93,27 @@ model Payment {
   @@index([userId, status])
   @@index([status])
   @@map("payments")
+}
+
+/// Ledger of every balance change: top-ups (positive) and write-offs (negative).
+model BalanceTransaction {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  // signup | payment | referral | solution | refund
+  type         String   @map("type")
+  /// Signed amount in credits: > 0 — пополнение, < 0 — списание.
+  amount       Int      @map("amount")
+  /// Balance right after this operation.
+  balanceAfter Int      @map("balance_after")
+  description  String?  @map("description")
+  /// Optional id of the related entity (payment / solution / referrer).
+  refId        String?  @map("ref_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("balance_transactions")
 }
 
 model Referral {

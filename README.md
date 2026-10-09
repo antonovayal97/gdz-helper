@@ -14,29 +14,33 @@ Production-ready MVP: пользователь открывает Mini App, фо
 - ⚖️ баланс и пакеты решений
 - 💳 mock-платёжный провайдер + подготовка к Telegram Stars
 - 🎁 реферальная программа
+- ✉️ регистрация и вход по email + паролю (вне Telegram)
 - 🌓 тема — автоматически из Telegram (светлая/тёмная)
 
 ## 2. Стек
 
-| Слой | Технология |
-| --- | --- |
-| Frontend | Next.js 16 (App Router), React 19, TypeScript |
-| Стили | Tailwind CSS v4 |
-| Иконки | lucide-react |
-| Telegram | `@tma.js/sdk` (client) + `@tma.js/init-data-node` (server validation) |
-| Валидация | Zod |
-| БД | PostgreSQL + Prisma ORM |
-| AI | OpenRouter (provider-абстракция) |
+| Слой          | Технология                                                            |
+| ------------- | --------------------------------------------------------------------- |
+| Frontend      | Next.js 16 (App Router), React 19, TypeScript                         |
+| Стили         | Tailwind CSS v4                                                       |
+| Иконки        | lucide-react                                                          |
+| Telegram      | `@tma.js/sdk` (client) + `@tma.js/init-data-node` (server validation) |
+| Валидация     | Zod                                                                   |
+| БД            | PostgreSQL + Prisma ORM                                               |
+| AI            | OpenRouter (provider-абстракция)                                      |
 | Хранение фото | `StorageProvider` (локально для dev, S3-совместимый — зарезервирован) |
-| Платежи | `PaymentProvider` (mock сейчас, Telegram Stars — дальше) |
-| Качество | ESLint, Prettier, `tsc --noEmit` |
+| Платежи       | `PaymentProvider` (mock сейчас, Telegram Stars — дальше)              |
+| Качество      | ESLint, Prettier, `tsc --noEmit`                                      |
 
 ## 3. Структура проекта
 
 ```
 app/                  # маршруты и API
 ├── api/
-│   ├── auth/telegram # POST — вход по initData
+│   ├── auth/
+│   │   ├── telegram  # POST — вход по initData
+│   │   ├── register  # POST — регистрация по email
+│   │   └── login     # POST — вход по email
 │   ├── me            # GET — текущий пользователь
 │   ├── solutions     # GET/POST — список/создание
 │   ├── solutions/[id]# GET — деталь решения
@@ -91,23 +95,31 @@ npm install
 cp .env.example .env
 ```
 
-| Переменная | Назначение |
-| --- | --- |
-| `DATABASE_URL` | строка подключения к PostgreSQL |
-| `TELEGRAM_BOT_TOKEN` | токен бота (серверная проверка initData) |
-| `TELEGRAM_BOT_USERNAME` | username бота для реферальных ссылок |
-| `AUTH_SECRET` | секрет подписи сессий (`openssl rand -hex 32`) |
-| `AI_PROVIDER` | `mock` \| `openrouter` \| `bitcoincom` |
-| `OPENROUTER_API_KEY` | ключ OpenRouter |
-| `OPENROUTER_MODEL` | модель, напр. `openai/gpt-4o-mini` |
-| `APP_URL` | публичный URL приложения |
-| `STORAGE_PROVIDER` | `local` (dev) \| `s3` (future) |
-| `PAYMENT_PROVIDER` | `mock` (сейчас) \| `telegram-stars` |
-| `ALLOW_MOCK_AUTH` | разрешить mock-вход вне Telegram (только dev) |
-| `ALLOW_MOCK_PAYMENTS` | разрешить mock-оплату (только dev) |
+| Переменная               | Назначение                                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`           | строка подключения к PostgreSQL                                                                   |
+| `TELEGRAM_BOT_TOKEN`     | токен бота (серверная проверка initData)                                                          |
+| `TELEGRAM_BOT_USERNAME`  | username бота для реферальных ссылок                                                              |
+| `AUTH_SECRET`            | секрет подписи сессий (`openssl rand -hex 32`)                                                    |
+| `AI_PROVIDER`            | `mock` \| `openrouter` \| `bitcoincom`                                                            |
+| `OPENROUTER_API_KEY`     | ключ OpenRouter                                                                                   |
+| `OPENROUTER_MODEL`       | модель (по умолчанию `qwen/qwen3-vl-235b-a22b-instruct`)                                          |
+| `OPENROUTER_CHEAP_MODEL` | дешёвая модель для режима «только ответ» (по умолчанию `google/gemini-2.5-flash-lite`)            |
+| `BITCOINCOM_API_KEY`     | ключ ai.bitcoin.com (это API nano-gpt)                                                            |
+| `BITCOINCOM_MODEL`       | модель (по умолчанию `qwen/qwen3-vl-235b-a22b-instruct`)                                          |
+| `BITCOINCOM_CHEAP_MODEL` | дешёвая модель для «только ответ» (по умолчанию `gemini-2.5-flash-lite`)                          |
+| `BITCOINCOM_BASE_URL`    | endpoint Bitcoin.com AI (по умолчанию `https://nano-gpt.com/api/v1`)                              |
+| `AI_TIMEOUT_MS`          | таймаут запроса к ИИ в мс (по умолчанию `120000`)                                                 |
+| `AI_RETRIES`             | повторные попытки при сетевой ошибке (по умолчанию `2`) — защита от временных сбоев сети          |
+| `AI_RETRY_DELAY_MS`      | базовая задержка между повторами в мс (по умолчанию `1000`, растёт линейно: 1с, 2с, …)            |
+| `AI_CHEAP_MODE`          | `true` (по умолчанию) — режим «только ответ» использует дешёвую модель; `false` — всегда основная |
+| `APP_URL`                | публичный URL приложения                                                                          |
+| `STORAGE_PROVIDER`       | `local` (dev) \| `s3` (future)                                                                    |
+| `PAYMENT_PROVIDER`       | `mock` (сейчас) \| `telegram-stars`                                                               |
+| `ALLOW_MOCK_PAYMENTS`    | разрешить mock-оплату (только dev)                                                                |
 
 > ⚠️ Никогда не коммить реальные секреты. `.env` в `.gitignore`.
-> ⚠️ `ALLOW_MOCK_AUTH` и `ALLOW_MOCK_PAYMENTS` принудительно выключены в production (`NODE_ENV=production`).
+> ⚠️ `ALLOW_MOCK_PAYMENTS` принудительно выключен в production (`NODE_ENV=production`).
 
 ## 6. Запуск PostgreSQL
 
@@ -153,7 +165,7 @@ npm run dev
 # → http://localhost:3000
 ```
 
-Открой в браузере (не в Telegram) — приложение само определит, что это не Telegram, и войдёт в mock-режим (`ALLOW_MOCK_AUTH=true`). Для полного опыта открой через Telegram Desktop / мобильное приложение.
+Открой в браузере (не в Telegram) — приложение покажет экран входа/регистрации по email. Для входа через Telegram открой через Telegram Desktop / мобильное приложение (initData проверяется сервером).
 
 ## 9. Настройка Telegram Bot
 
@@ -170,12 +182,28 @@ npm run dev
 
 > Telegram требует HTTPS-домен для Mini App (не localhost из внешней сети). Можно использовать туннель (`npx localtunnel`? нет — `cloudflared tunnel --url http://localhost:3000`), либо `ngrok http 3000`. Укажи публичный URL в `APP_URL`.
 
-## 11. Настройка OpenRouter
+## 11. Настройка ИИ-провайдера
+
+Приложение умеет работать через **OpenRouter** или **Bitcoin.com AI** (ai.bitcoin.com — это OpenAI-совместимый API на базе nano-gpt). Достаточно загрузить один API-ключ нужного провайдера — провайдер подхватится автоматически (можно явно задать через `AI_PROVIDER`).
+
+### Вариант А — OpenRouter
 
 1. Зарегистрируйся на [openrouter.ai](https://openrouter.ai), создай ключ.
-2. `OPENROUTER_API_KEY=<ключ>`.
-3. Выбери модель и укажи `OPENROUTER_MODEL` (по умолчанию `openai/gpt-4o-mini`).
-4. `AI_PROVIDER=openrouter`.
+2. `OPENROUTER_API_KEY=<ключ>` в `.env` — провайдер подхватится автоматически.
+3. По умолчанию основная модель — `qwen/qwen3-vl-235b-a22b-instruct` (отлично распознаёт фото задач).
+
+### Вариант Б — Bitcoin.com AI (ai.bitcoin.com)
+
+1. Зарегистрируйся на [ai.bitcoin.com](https://ai.bitcoin.com), создай API-ключ.
+2. `BITCOINCOM_API_KEY=<ключ>` в `.env` — провайдер подхватится автоматически.
+3. Ключ работает на endpoint `https://nano-gpt.com/api/v1` (по умолчанию, при необходимости переопределяется через `BITCOINCOM_BASE_URL`).
+
+### Модели (рекомендация)
+
+- **Основная (решение задач)** — `qwen/qwen3-vl-235b-a22b-instruct` (мультимодальная, отлично читает учебники).
+- **Дешёвые задачи (режим «только ответ»)** — Gemini 2.5 Flash Lite: `google/gemini-2.5-flash-lite` (OpenRouter) / `gemini-2.5-flash-lite` (Bitcoin.com AI).
+
+Выбор модели можно поменять через `OPENROUTER_MODEL` / `BITCOINCOM_MODEL` (и соответствующие `*_CHEAP_MODEL`). Если `AI_CHEAP_MODE=true` (по умолчанию), запросы в режиме «только ответ» автоматически идут на дешёвую модель, а в остальных режимах используется основная.
 
 Без ключа (`AI_PROVIDER=mock`) используется встроенный mock-провайдер: весь флоу можно проверить без внешних вызовов.
 
@@ -213,7 +241,7 @@ npx prisma db seed       # наполнение (пакеты)
 
 - **AI Provider интерфейс** (`lib/ai/provider.ts`): бизнес-логика зависит только от `AIProvider.solveProblem(image, options)`. Добавление Bitcoin.com AI = написать класс `BitcoinComProvider` и зарегистрировать в `getAIProvider()` — без изменения остального кода.
 - **Списание кредита** (`services/solution`): кредит списывается атомарно с созданием решения в одной транзакции (`$transaction`). При ошибке ИИ кредит не списывается; загруженное фото удаляется. Двойное списание невозможно благодаря `updateMany` с условием `balance >= 1`.
-- **Идентификация**: сервер доверяет только проверенному `initData` (HMAC-подпись + срок действия). Telegram ID из фронтенда никогда не используется напрямую.
+- **Идентификация**: сервер доверяет только проверенному `initData` (HMAC-подпись + срок действия). Telegram ID из фронтенда никогда не используется напрямую. Email-аккаунты входят по паролю (хеш scrypt) и получают те же HMAC-сессии.
 - **Цены**: читаются из БД (`CreditPackage`), а не из запроса. Frontend не передаёт стоимость как trusted value.
 - **Платежи**: абстракция `PaymentProvider`. Сейчас `mock`; когда Telegram Stars будет доступен — новый провайдер без изменения бизнес-логики.
 - **Реферальная система**: при создании пользователя реферер берётся из `start_param` (`ref_XXXX`). Награда реферу начисляется при первой успешной оплате приглашённого.
@@ -222,6 +250,7 @@ npx prisma db seed       # наполнение (пакеты)
 ## 16. Безопасность
 
 - Серверная проверка Telegram initData (HMAC + expiration) — `lib/telegram/validate.ts`.
+- Пароли — только scrypt с солью (`lib/server/auth.ts`); одинаковый ответ для «нет такого email» и «неверный пароль», лимиты на `/auth/login` и `/auth/register`.
 - Подписанные HMAC-сессии (`AUTH_SECRET`).
 - Валидация изображений на сервере: MIME allowlist + проверка magic bytes + лимит размера — несмотря на клиентскую оптимизацию.
 - Rate limiting на чувствительные ручки.

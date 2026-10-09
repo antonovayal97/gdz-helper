@@ -1,14 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Wallet, Gift, Check, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { Wallet, Gift, Check, Loader2, Receipt } from "lucide-react";
 import { Card, SectionTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/components/auth-context";
 import { useToast } from "@/components/toast-context";
 import { apiFetch } from "@/lib/client/api";
 import { formatCredits } from "@/components/helpers";
-import type { CreditPackageDto } from "@/types";
+import { BalanceTxRow } from "@/components/balance-tx-row";
+import type { BalanceTransactionDto, CreditPackageDto } from "@/types";
 
 interface ReferralDto {
   code: string;
@@ -22,6 +24,9 @@ interface CreatePaymentResponse {
   mock: boolean;
 }
 
+/** How many latest operations are shown before the link to the full history. */
+const LAST_TX_PREVIEW = 3;
+
 export function BalanceScreen() {
   const { user, getBalance, refresh } = useAuth();
   const toast = useToast();
@@ -29,6 +34,13 @@ export function BalanceScreen() {
   const [referral, setReferral] = useState<ReferralDto | null>(null);
   const [creating, setCreating] = useState<string | null>(null);
   const [pendingPayment, setPendingPayment] = useState<CreatePaymentResponse | null>(null);
+  const [transactions, setTransactions] = useState<BalanceTransactionDto[] | null>(null);
+
+  const loadHistory = useCallback(() => {
+    apiFetch<{ transactions: BalanceTransactionDto[] }>("/api/balance/history")
+      .then((res) => setTransactions(res.transactions))
+      .catch(() => setTransactions([]));
+  }, []);
 
   useEffect(() => {
     apiFetch<{ packages: CreditPackageDto[] }>("/api/packages")
@@ -37,7 +49,8 @@ export function BalanceScreen() {
     apiFetch<{ referral: ReferralDto }>("/api/referral")
       .then((res) => setReferral(res.referral))
       .catch(() => setReferral(null));
-  }, []);
+    loadHistory();
+  }, [loadHistory]);
 
   const buy = useCallback(
     async (pkg: CreditPackageDto) => {
@@ -69,10 +82,11 @@ export function BalanceScreen() {
       setPendingPayment(null);
       await getBalance();
       await refresh();
+      loadHistory();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Оплата не удалась");
     }
-  }, [pendingPayment, toast, getBalance, refresh]);
+  }, [pendingPayment, toast, getBalance, refresh, loadHistory]);
 
   const copyReferral = useCallback(async () => {
     if (!referral) return;
@@ -85,7 +99,7 @@ export function BalanceScreen() {
   }, [referral, toast]);
 
   return (
-    <div className="animate-fade-in flex flex-col gap-5 px-5 pb-10 pt-6">
+    <div className="animate-fade-in flex flex-col gap-5 px-5 pb-nav pt-6">
       <div className="flex items-center gap-2">
         <Wallet className="h-6 w-6 text-accent" />
         <h1 className="text-[26px] font-extrabold leading-tight">Баланс</h1>
@@ -99,6 +113,32 @@ export function BalanceScreen() {
         </p>
         <p className="text-sm text-hint">{user ? formatCredits(user.balance) : ""}</p>
       </Card>
+
+      <div>
+        <SectionTitle>Последние операции</SectionTitle>
+        {transactions === null ? (
+          <div className="skeleton h-32 w-full rounded-3xl" />
+        ) : transactions.length === 0 ? (
+          <Card className="flex flex-col items-center gap-2 p-6 text-center">
+            <Receipt className="h-8 w-8 text-hint" />
+            <p className="text-sm text-hint">Операций пока нет</p>
+          </Card>
+        ) : (
+          <Card className="divide-y divide-border">
+            {transactions.slice(0, LAST_TX_PREVIEW).map((tx) => (
+              <BalanceTxRow key={tx.id} tx={tx} />
+            ))}
+            {transactions.length > LAST_TX_PREVIEW && (
+              <Link
+                href="/balance/history"
+                className="block p-3 text-center text-sm font-semibold text-accent"
+              >
+                Полная история ({transactions.length})
+              </Link>
+            )}
+          </Card>
+        )}
+      </div>
 
       {/* Packages */}
       <div>

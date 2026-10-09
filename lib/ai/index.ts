@@ -10,7 +10,9 @@ export { AIProviderError };
 export { calculateAiCost } from "@/config/ai-models";
 
 /**
- * Factory: returns the configured AI provider (from AI_PROVIDER env).
+ * Factory: returns the AI provider. The provider is chosen from AI_PROVIDER,
+ * or auto-detected from whichever API key is present (OpenRouter / Bitcoin.com AI),
+ * falling back to mock when no key is configured.
  * Business code should always call getAIProvider() instead of constructing
  * providers directly.
  */
@@ -28,7 +30,15 @@ export function getAIProvider(): AIProvider {
       break;
     case "mock":
     default:
-      cached = new MockAIProvider();
+      // Auto-detect from whichever API key is present, so uploading a single
+      // key in .env is enough — no need to also flip AI_PROVIDER.
+      if (config.ai.bitcoincom.apiKey) {
+        cached = new BitcoinComProvider();
+      } else if (config.ai.openrouter.apiKey) {
+        cached = new OpenRouterProvider();
+      } else {
+        cached = new MockAIProvider();
+      }
       break;
   }
 

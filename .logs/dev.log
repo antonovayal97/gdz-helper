@@ -1,0 +1,219 @@
+
+> gdz-telegram-mini-app@0.1.0 dev
+> next dev
+
+▲ Next.js 16.3.8 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://172.20.10.7:3000
+- Environments: .env
+✓ Ready in 520ms
+✓ Running next.config.ts took 34ms
+
+ GET /balance 200 in 903ms (next.js: 524ms, application-code: 379ms)
+[browser] [telegram] SDK init failed (running outside Telegram?) LaunchParamsRetrieveError: Unable to retrieve launch parameters from any known source. Perhaps, you have opened your app outside Telegram?
+📖 Refer to docs for more information:
+https://docs.telegram-mini-apps.com/packages/tma-js-bridge/environment
+
+Collected errors:
+Source: window.location.href / The value doesn't match required schema
+Source: performance navigation entries / The value doesn't match required schema
+Source: local storage / Source is empty
+    at <unknown> (https://docs.telegram-mini-apps.com/packages/tma-js-bridge/environment)
+    at initTelegram (lib/client/telegram.ts:31:14)
+    at AuthProvider.useCallback[login] (components/auth-context.tsx:59:29)
+    at AuthProvider.useEffect (components/auth-context.tsx:165:15)
+    at AuthProvider.useEffect (components/auth-context.tsx:172:5)
+  29 |   if (!initialized) {
+  30 |     try {
+> 31 |       sdkInit();
+     |              ^
+  32 |     } catch (err) {
+  33 |       console.warn("[telegram] SDK init failed (running outside Telegram?)", err);
+  34 |     } (lib/client/telegram.ts:33:15)
+ GET /api/me 200 in 682ms (next.js: 250ms, application-code: 432ms)
+ GET /api/packages 200 in 288ms (next.js: 150ms, application-code: 138ms)
+ GET /api/referral 200 in 298ms (next.js: 76ms, application-code: 221ms)
+ GET /api/balance/history 200 in 291ms (next.js: 232ms, application-code: 59ms)
+ GET /api/packages 200 in 300ms (next.js: 261ms, application-code: 39ms)
+ GET /api/referral 200 in 301ms (next.js: 247ms, application-code: 54ms)
+ GET /api/balance/history 200 in 311ms (next.js: 257ms, application-code: 54ms)
+ GET /balance 200 in 82ms (next.js: 7ms, application-code: 75ms)
+[browser] [telegram] SDK init failed (running outside Telegram?) LaunchParamsRetrieveError: Unable to retrieve launch parameters from any known source. Perhaps, you have opened your app outside Telegram?
+📖 Refer to docs for more information:
+https://docs.telegram-mini-apps.com/packages/tma-js-bridge/environment
+
+Collected errors:
+Source: window.location.href / The value doesn't match required schema
+Source: performance navigation entries / The value doesn't match required schema
+Source: local storage / Source is empty
+    at <unknown> (https://docs.telegram-mini-apps.com/packages/tma-js-bridge/environment)
+    at initTelegram (lib/client/telegram.ts:31:14)
+    at AuthProvider.useCallback[login] (components/auth-context.tsx:59:29)
+    at AuthProvider.useEffect (components/auth-context.tsx:165:15)
+    at AuthProvider.useEffect (components/auth-context.tsx:172:5)
+  29 |   if (!initialized) {
+  30 |     try {
+> 31 |       sdkInit();
+     |              ^
+  32 |     } catch (err) {
+  33 |       console.warn("[telegram] SDK init failed (running outside Telegram?)", err);
+  34 |     } (lib/client/telegram.ts:33:15)
+ GET /api/me 200 in 20ms (next.js: 5ms, application-code: 15ms)
+ GET /api/packages 200 in 54ms (next.js: 7ms, application-code: 47ms)
+ GET /api/balance/history 200 in 55ms (next.js: 22ms, application-code: 33ms)
+ GET /api/packages 200 in 56ms (next.js: 28ms, application-code: 28ms)
+ GET /api/referral 200 in 63ms (next.js: 17ms, application-code: 46ms)
+ GET /api/referral 200 in 63ms (next.js: 33ms, application-code: 31ms)
+ GET /api/balance/history 200 in 65ms (next.js: 36ms, application-code: 28ms)
+ POST /api/payments/create 200 in 155ms (next.js: 117ms, application-code: 38ms)
+ POST /api/payments/webhook 200 in 105ms (next.js: 77ms, application-code: 28ms)
+ GET /api/balance 200 in 73ms (next.js: 62ms, application-code: 11ms)
+ GET /api/me 200 in 10ms (next.js: 3ms, application-code: 8ms)
+ GET /api/balance/history 200 in 15ms (next.js: 3ms, application-code: 12ms)
+ GET / 200 in 79ms (next.js: 39ms, application-code: 40ms)
+ POST /api/solutions/detect 200 in 4.9s (next.js: 104ms, application-code: 4.8s)
+ POST /api/solutions 200 in 35.8s (next.js: 118ms, application-code: 35.7s)
+ GET /result/cmv0ony8v0005tz35q3tpxeiz?ids=cmv0ony8v0005tz35q3tpxeiz%2Ccmv0ony970007tz358donuykr&nums=1%2C4 200 in 851ms (next.js: 813ms, application-code: 39ms)
+ GET /api/solutions/cmv0ony8v0005tz35q3tpxeiz 200 in 1246ms (next.js: 1215ms, application-code: 31ms)
+ GET /api/solutions/cmv0ony8v0005tz35q3tpxeiz 200 in 1247ms (next.js: 1214ms, application-code: 33ms)
+ GET /api/solutions/cmv0ony970007tz358donuykr 200 in 42ms (next.js: 24ms, application-code: 18ms)
+ GET /api/solutions/cmv0ony8v0005tz35q3tpxeiz 200 in 44ms (next.js: 26ms, application-code: 19ms)
+ GET / 200 in 42ms (next.js: 10ms, application-code: 32ms)
+ GET /history 200 in 167ms (next.js: 137ms, application-code: 30ms)
+ GET /api/solutions 200 in 24ms (next.js: 4ms, application-code: 20ms)
+ GET /api/solutions 200 in 26ms (next.js: 11ms, application-code: 15ms)
+ GET /balance 200 in 39ms (next.js: 6ms, application-code: 33ms)
+ GET /api/packages 200 in 53ms (next.js: 8ms, application-code: 45ms)
+ GET /api/balance/history 200 in 54ms (next.js: 21ms, application-code: 33ms)
+ GET /api/referral 200 in 62ms (next.js: 16ms, application-code: 46ms)
+ GET /api/packages 200 in 60ms (next.js: 33ms, application-code: 28ms)
+ GET /api/balance/history 200 in 26ms (next.js: 15ms, application-code: 11ms)
+ GET /api/referral 200 in 37ms (next.js: 12ms, application-code: 25ms)
+✓ Compiled in 633ms
+ GET /api/packages 200 in 33ms (next.js: 9ms, application-code: 24ms)
+ GET /balance 200 in 112ms (next.js: 18ms, application-code: 94ms)
+ GET /api/referral 200 in 42ms (next.js: 12ms, application-code: 31ms)
+ GET /api/balance/history 200 in 29ms (next.js: 6ms, application-code: 22ms)
+✓ Compiled in 632ms
+ GET /balance 200 in 367ms (next.js: 250ms, application-code: 117ms)
+ GET /balance 200 in 121ms (next.js: 13ms, application-code: 109ms)
+ GET /balance 200 in 152ms (next.js: 10ms, application-code: 142ms)
+ GET /balance 200 in 127ms (next.js: 12ms, application-code: 115ms)
+ GET /balance 200 in 97ms (next.js: 9ms, application-code: 88ms)
+ GET /balance 200 in 78ms (next.js: 8ms, application-code: 70ms)
+ GET /balance 200 in 33ms (next.js: 5ms, application-code: 27ms)
+ GET /balance 200 in 145ms (next.js: 9ms, application-code: 136ms)
+ GET /balance 200 in 110ms (next.js: 7ms, application-code: 103ms)
+ GET /balance 200 in 86ms (next.js: 6ms, application-code: 80ms)
+ GET /balance 200 in 84ms (next.js: 19ms, application-code: 65ms)
+ GET /balance 200 in 64ms (next.js: 7ms, application-code: 57ms)
+ GET /balance 200 in 56ms (next.js: 4ms, application-code: 52ms)
+ GET /balance 200 in 29ms (next.js: 7ms, application-code: 22ms)
+ GET /balance 200 in 69ms (next.js: 4ms, application-code: 64ms)
+ GET /balance 200 in 90ms (next.js: 4ms, application-code: 86ms)
+ GET /balance 200 in 111ms (next.js: 5ms, application-code: 106ms)
+ GET /balance 200 in 72ms (next.js: 11ms, application-code: 62ms)
+ GET /balance 200 in 29ms (next.js: 5ms, application-code: 24ms)
+ GET /balance 200 in 50ms (next.js: 4ms, application-code: 46ms)
+ GET /balance 200 in 51ms (next.js: 4ms, application-code: 47ms)
+ GET /balance 200 in 44ms (next.js: 3ms, application-code: 41ms)
+ GET /balance 200 in 41ms (next.js: 3ms, application-code: 37ms)
+ GET /balance 200 in 23ms (next.js: 3ms, application-code: 21ms)
+ GET /balance 200 in 50ms (next.js: 3ms, application-code: 47ms)
+ GET /balance 200 in 48ms (next.js: 4ms, application-code: 44ms)
+ GET /balance 200 in 44ms (next.js: 3ms, application-code: 41ms)
+ GET /balance 200 in 51ms (next.js: 4ms, application-code: 47ms)
+ GET /balance 200 in 92ms (next.js: 3ms, application-code: 88ms)
+ GET /balance 200 in 78ms (next.js: 4ms, application-code: 74ms)
+ GET /balance 200 in 74ms (next.js: 6ms, application-code: 68ms)
+ GET /balance 200 in 54ms (next.js: 5ms, application-code: 49ms)
+ GET /balance 200 in 43ms (next.js: 5ms, application-code: 39ms)
+ GET /balance 200 in 40ms (next.js: 3ms, application-code: 37ms)
+ GET /balance 200 in 45ms (next.js: 3ms, application-code: 42ms)
+ GET /balance 200 in 61ms (next.js: 4ms, application-code: 57ms)
+ GET /balance 200 in 60ms (next.js: 4ms, application-code: 56ms)
+ GET /balance 200 in 52ms (next.js: 4ms, application-code: 48ms)
+ GET /balance 200 in 47ms (next.js: 3ms, application-code: 44ms)
+ GET /balance 200 in 23ms (next.js: 3ms, application-code: 20ms)
+✓ Compiled in 445ms
+ GET /api/packages 200 in 495ms (next.js: 189ms, application-code: 305ms)
+ GET /api/referral 200 in 502ms (next.js: 358ms, application-code: 144ms)
+ GET /api/balance/history 200 in 213ms (next.js: 175ms, application-code: 38ms)
+ GET /api/packages 200 in 133ms (next.js: 104ms, application-code: 29ms)
+ GET /balance 200 in 564ms (next.js: 9ms, application-code: 554ms)
+ GET /api/referral 200 in 44ms (next.js: 18ms, application-code: 26ms)
+ GET /api/balance/history 200 in 20ms (next.js: 6ms, application-code: 14ms)
+ GET /balance 200 in 461ms (next.js: 14ms, application-code: 448ms)
+[browser] [telegram] SDK init failed (running outside Telegram?) LaunchParamsRetrieveError: Unable to retrieve launch parameters from any known source. Perhaps, you have opened your app outside Telegram?
+📖 Refer to docs for more information:
+https://docs.telegram-mini-apps.com/packages/tma-js-bridge/environment
+
+Collected errors:
+Source: window.location.href / The value doesn't match required schema
+Source: performance navigation entries / The value doesn't match required schema
+Source: local storage / Source is empty
+    at <unknown> (https://docs.telegram-mini-apps.com/packages/tma-js-bridge/environment)
+    at initTelegram (lib/client/telegram.ts:31:14)
+    at AuthProvider.useCallback[login] (components/auth-context.tsx:59:29)
+    at AuthProvider.useEffect (components/auth-context.tsx:165:15)
+    at AuthProvider.useEffect (components/auth-context.tsx:172:5)
+  29 |   if (!initialized) {
+  30 |     try {
+> 31 |       sdkInit();
+     |              ^
+  32 |     } catch (err) {
+  33 |       console.warn("[telegram] SDK init failed (running outside Telegram?)", err);
+  34 |     } (lib/client/telegram.ts:33:15)
+ GET /api/me 200 in 87ms (next.js: 69ms, application-code: 18ms)
+ GET /api/packages 200 in 54ms (next.js: 11ms, application-code: 43ms)
+ GET /api/packages 200 in 56ms (next.js: 23ms, application-code: 33ms)
+ GET /api/referral 200 in 77ms (next.js: 16ms, application-code: 61ms)
+ GET /api/balance/history 200 in 79ms (next.js: 20ms, application-code: 59ms)
+ GET /api/balance/history 200 in 57ms (next.js: 20ms, application-code: 37ms)
+ GET /api/referral 200 in 72ms (next.js: 14ms, application-code: 58ms)
+ GET /balance/history 200 in 1217ms (next.js: 1178ms, application-code: 39ms)
+ GET /api/balance/history 200 in 22ms (next.js: 4ms, application-code: 17ms)
+ GET /api/balance/history 200 in 19ms (next.js: 5ms, application-code: 14ms)
+ GET /balance 200 in 56ms (next.js: 27ms, application-code: 29ms)
+ GET /api/packages 200 in 43ms (next.js: 13ms, application-code: 30ms)
+ GET /api/packages 200 in 36ms (next.js: 5ms, application-code: 32ms)
+ GET /api/balance/history 200 in 46ms (next.js: 19ms, application-code: 27ms)
+ GET /api/referral 200 in 58ms (next.js: 16ms, application-code: 42ms)
+ GET /api/referral 200 in 36ms (next.js: 9ms, application-code: 27ms)
+ GET /api/balance/history 200 in 33ms (next.js: 14ms, application-code: 19ms)
+ GET / 200 in 57ms (next.js: 30ms, application-code: 27ms)
+ POST /api/solutions/detect 200 in 6.5s (next.js: 113ms, application-code: 6.3s)
+ POST /api/solutions 200 in 35.1s (next.js: 95ms, application-code: 35.0s)
+ GET /result/cmv0ozs5g000btz35itd3vsw1 200 in 145ms (next.js: 95ms, application-code: 50ms)
+ GET /api/solutions/cmv0ozs5g000btz35itd3vsw1 200 in 146ms (next.js: 121ms, application-code: 25ms)
+ GET /api/solutions/cmv0ozs5g000btz35itd3vsw1 200 in 141ms (next.js: 128ms, application-code: 13ms)
+ GET / 200 in 67ms (next.js: 18ms, application-code: 50ms)
+ GET /history 200 in 156ms (next.js: 137ms, application-code: 18ms)
+ GET /api/solutions 200 in 21ms (next.js: 3ms, application-code: 18ms)
+ GET /api/solutions 200 in 18ms (next.js: 3ms, application-code: 14ms)
+ GET /balance 200 in 36ms (next.js: 5ms, application-code: 31ms)
+ GET /api/packages 200 in 56ms (next.js: 5ms, application-code: 52ms)
+ GET /api/referral 200 in 72ms (next.js: 12ms, application-code: 60ms)
+ GET /api/balance/history 200 in 68ms (next.js: 31ms, application-code: 37ms)
+ GET /api/packages 200 in 51ms (next.js: 25ms, application-code: 25ms)
+ GET /api/referral 200 in 53ms (next.js: 28ms, application-code: 25ms)
+ GET /api/balance/history 200 in 34ms (next.js: 16ms, application-code: 18ms)
+ GET /history 200 in 53ms (next.js: 8ms, application-code: 45ms)
+ GET /api/solutions 200 in 66ms (next.js: 5ms, application-code: 61ms)
+ GET /api/solutions 200 in 52ms (next.js: 4ms, application-code: 48ms)
+ GET / 200 in 18ms (next.js: 5ms, application-code: 13ms)
+ GET /history 200 in 35ms (next.js: 7ms, application-code: 28ms)
+ GET /api/solutions 200 in 27ms (next.js: 4ms, application-code: 23ms)
+ GET /api/solutions 200 in 25ms (next.js: 7ms, application-code: 18ms)
+ GET /balance 200 in 35ms (next.js: 5ms, application-code: 31ms)
+ GET /api/packages 200 in 40ms (next.js: 12ms, application-code: 28ms)
+ GET /api/referral 200 in 69ms (next.js: 6ms, application-code: 63ms)
+ GET /api/balance/history 200 in 73ms (next.js: 13ms, application-code: 61ms)
+ GET /api/packages 200 in 87ms (next.js: 26ms, application-code: 61ms)
+ GET /api/referral 200 in 94ms (next.js: 31ms, application-code: 63ms)
+ GET /api/balance/history 200 in 76ms (next.js: 27ms, application-code: 49ms)
+ GET / 200 in 72ms (next.js: 15ms, application-code: 57ms)
+ GET /history 200 in 50ms (next.js: 8ms, application-code: 42ms)
+ GET /api/solutions 200 in 26ms (next.js: 5ms, application-code: 21ms)
+ GET /api/solutions 200 in 40ms (next.js: 4ms, application-code: 36ms)
+ GET / 200 in 31ms (next.js: 8ms, application-code: 24ms)

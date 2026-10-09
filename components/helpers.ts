@@ -42,6 +42,18 @@ export function formatCredits(n: number): string {
   return `${n} ${plural(n, ["решение", "решения", "решений"])}`;
 }
 
+export function formatTasks(n: number): string {
+  const plural = (i: number, forms: [string, string, string]) => {
+    const abs = Math.abs(i) % 100;
+    const last = abs % 10;
+    if (abs > 10 && abs < 20) return forms[2];
+    if (last > 1 && last < 5) return forms[1];
+    if (last === 1) return forms[0];
+    return forms[2];
+  };
+  return `${n} ${plural(n, ["задачу", "задачи", "задач"])}`;
+}
+
 export function copyToClipboard(text: string): Promise<void> {
   return navigator.clipboard.writeText(text);
 }

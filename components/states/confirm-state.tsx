@@ -32,6 +32,7 @@ export function ConfirmState({
     answer: "только результат",
     "step-by-step": "подробное решение",
     schoolboy: "максимально просто",
+    parent: "как объяснить ребёнку самому",
   };
 
   const hasCredits = balance == null || balance > 0;

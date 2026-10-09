@@ -7,23 +7,36 @@ import {
   Copy,
   Check,
   Image as ImageIcon,
-  RefreshCcw,
   MessageSquareHeart,
+  Sparkles,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Formula } from "@/components/formula";
 import { useToast } from "@/components/toast-context";
 import { useAuth } from "@/components/auth-context";
+import { AuthScreen } from "@/components/auth-screen";
 import { apiFetch } from "@/lib/client/api";
 import { subjectEmoji, subjectLabel, formatDate, formatTime } from "@/components/helpers";
 import { bindBackButton } from "@/lib/client/telegram";
-import type { SolutionDetail } from "@/types";
+import { explanationModeLabel, type SolutionDetail } from "@/types";
 
-export function ResultScreen({ id }: { id: string }) {
+interface ResultScreenProps {
+  id: string;
+  /** All solution ids from one batch-solve (same photo), in task order. */
+  batchIds?: string[];
+  /** Task labels matching `batchIds` by index, when known (shown as "№ А5"). */
+  batchNumbers?: string[];
+}
+
+export function ResultScreen({ id, batchIds, batchNumbers }: ResultScreenProps) {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, ready } = useAuth();
   const toast = useToast();
+  const batch = batchIds && batchIds.length > 1 ? batchIds : null;
+  const [activeId, setActiveId] = useState<string>(() =>
+    batch ? (batch.includes(id) ? id : batch[0]) : id,
+  );
   const [solution, setSolution] = useState<SolutionDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [copied, setCopied] = useState<"answer" | "solution" | null>(null);
@@ -31,10 +44,18 @@ export function ResultScreen({ id }: { id: string }) {
 
   useEffect(() => {
     if (!user) return;
-    apiFetch<{ solution: SolutionDetail }>(`/api/solutions/${id}`)
-      .then((res) => setSolution(res.solution))
-      .catch(() => setNotFound(true));
-  }, [user, id]);
+    let ignore = false;
+    apiFetch<{ solution: SolutionDetail }>(`/api/solutions/${activeId}`)
+      .then((res) => {
+        if (!ignore) setSolution(res.solution);
+      })
+      .catch(() => {
+        if (!ignore) setNotFound(true);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [user, activeId]);
 
   // Native Telegram back button — same as the header arrow.
   useEffect(() => {
@@ -72,6 +93,9 @@ export function ResultScreen({ id }: { id: string }) {
     router.push("/");
   }, [router]);
 
+  // No session (e.g. the link was opened in a plain browser) — show sign-in.
+  if (!user && ready) return <AuthScreen />;
+
   if (notFound) {
     return (
       <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-4 px-5 text-center">
@@ -107,7 +131,10 @@ export function ResultScreen({ id }: { id: string }) {
   }
 
   const steps = Array.isArray(solution.steps) ? solution.steps : [];
-  const grade = solution.grade ? ` · ${solution.grade} класс` : "";
+  // In "только ответ" mode the user asked for the answer alone — never show the solution.
+  const answerOnly = solution.explanationMode === "answer";
+  // The explanation mode the user picked when solving. Old records may lack it.
+  const mode = explanationModeLabel(solution.explanationMode);
 
   return (
     <div className="mx-auto min-h-dvh w-full max-w-md animate-fade-in px-5 pb-16 pt-4">
@@ -124,10 +151,45 @@ export function ResultScreen({ id }: { id: string }) {
           <span className="text-base">{subjectEmoji(solution.subject)}</span>
           <span className="max-w-[140px] truncate text-sm font-semibold text-hint">
             {subjectLabel(solution.subject)}
-            {grade}
           </span>
         </div>
       </div>
+
+      {/* Explanation mode chosen by the user */}
+      {mode && (
+        <div className="mt-3 flex items-center gap-2 rounded-2xl border border-border bg-card px-4 py-2.5">
+          <Sparkles className="h-4 w-4 shrink-0 text-accent" />
+          <span className="text-sm text-hint">Режим объяснения:</span>
+          <span className="ml-auto text-sm font-semibold">{mode}</span>
+        </div>
+      )}
+
+      {/* Task switcher — shown when several tasks were solved from one photo */}
+      {batch && (
+        <div className="-mx-5 mt-3 flex gap-2 overflow-x-auto px-5 pb-1">
+          {batch.map((sid, i) => {
+            const active = sid === activeId;
+            const num = batchNumbers?.[i];
+            return (
+              <button
+                key={sid}
+                onClick={() => {
+                  if (sid === activeId) return;
+                  // Clear the stale solution so the skeleton shows while refetching.
+                  setSolution(null);
+                  setNotFound(false);
+                  setActiveId(sid);
+                }}
+                className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${
+                  active ? "border-accent bg-accent/10 text-foreground" : "border-border bg-card text-hint"
+                }`}
+              >
+                {num ? `№ ${num}` : `Задача ${i + 1}`}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Photo toggle */}
       <button
@@ -159,16 +221,23 @@ export function ResultScreen({ id }: { id: string }) {
       <Card className="mt-4 border-accent/40 p-5">
         <p className="text-xs font-semibold uppercase tracking-wide text-hint">Ответ</p>
         <div className="mt-2 flex items-start justify-between gap-3">
-          <p className="text-2xl font-extrabold leading-snug text-accent">{solution.answer}</p>
-          <Button size="sm" variant="secondary" onClick={copyAnswer}>
+          <p className="min-w-0 flex-1 break-words text-xl font-extrabold leading-snug text-accent">
+            {solution.answer}
+          </p>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={copyAnswer}
+            className="shrink-0"
+            aria-label="Копировать ответ"
+          >
             {copied === "answer" ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-            {copied === "answer" ? "Готово" : "Копировать"}
           </Button>
         </div>
       </Card>
 
       {/* Решение */}
-      {steps.length > 0 && (
+      {!answerOnly && steps.length > 0 && (
         <Card className="mt-4 p-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-hint">Решение</p>
           <ol className="mt-3 space-y-5">
@@ -199,20 +268,19 @@ export function ResultScreen({ id }: { id: string }) {
         <span className="text-xs text-hint">
           {formatDate(solution.createdAt)} · {formatTime(solution.createdAt)}
         </span>
-        <button
-          onClick={copySolution}
-          className="flex items-center gap-1.5 text-sm font-semibold text-accent"
-        >
-          {copied === "solution" ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-          Скопировать решение
-        </button>
+        {!answerOnly && (
+          <button
+            onClick={copySolution}
+            className="flex items-center gap-1.5 text-sm font-semibold text-accent"
+          >
+            {copied === "solution" ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            Скопировать решение
+          </button>
+        )}
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3">
-        <Button variant="secondary" size="lg" onClick={goHome} leftIcon={<RefreshCcw className="h-5 w-5" />}>
-          Новая задача
-        </Button>
-        <Button size="lg" onClick={goHome} leftIcon={<MessageSquareHeart className="h-5 w-5" />}>
+      <div className="mt-4">
+        <Button size="lg" className="w-full" onClick={goHome} leftIcon={<MessageSquareHeart className="h-5 w-5" />}>
           Решить ещё
         </Button>
       </div>

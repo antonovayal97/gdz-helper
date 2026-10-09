@@ -29,7 +29,12 @@ interface AuthContextValue {
   /** urlencoded initData sent to the backend */
   initDataRaw: string | null;
   refresh: () => Promise<void>;
+  /** Telegram Mini App login (validates initData). */
   login: () => Promise<void>;
+  /** Email + password login. */
+  loginEmail: (email: string, password: string) => Promise<void>;
+  /** Email + password registration. */
+  registerEmail: (email: string, password: string, referralCode?: string) => Promise<void>;
   logout: () => Promise<void>;
   setUser: (user: PublicUser | null) => void;
   getBalance: () => Promise<number>;
@@ -73,17 +78,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    const body: Record<string, unknown> = {};
-    if (env.initDataRaw) {
-      body.initData = env.initDataRaw;
-    } else {
-      // Outside Telegram (browser dev) → ask the backend for a mock session.
-      body.dev = true;
+    if (!env.initDataRaw) {
+      // Outside Telegram without a session: the UI falls back to the
+      // email login/register screen (see AuthScreen).
+      return;
     }
 
     const res = await apiFetch<{ token: string; user: PublicUser }>("/api/auth/telegram", {
       method: "POST",
-      json: body,
+      json: { initData: env.initDataRaw },
     });
     setToken(res.token);
     setUser(res.user);
@@ -105,6 +108,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await login();
     }
   }, [login]);
+
+  const storeSession = useCallback(async (path: string, payload: Record<string, unknown>) => {
+    const res = await apiFetch<{ token: string; user: PublicUser }>(path, {
+      method: "POST",
+      json: payload,
+    });
+    setToken(res.token);
+    setUser(res.user);
+    setCachedUser(res.user);
+    readyTelegram();
+  }, []);
+
+  const loginEmail = useCallback(
+    async (email: string, password: string) => {
+      await storeSession("/api/auth/login", { email, password });
+    },
+    [storeSession],
+  );
+
+  const registerEmail = useCallback(
+    async (email: string, password: string, referralCode?: string) => {
+      await storeSession("/api/auth/register", {
+        email,
+        password,
+        ...(referralCode ? { referralCode } : {}),
+      });
+    },
+    [storeSession],
+  );
 
   const logout = useCallback(async () => {
     clearToken();
@@ -142,7 +174,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, ready, isTMA, initDataRaw, refresh, login, logout, setUser, getBalance }}
+      value={{
+        user,
+        ready,
+        isTMA,
+        initDataRaw,
+        refresh,
+        login,
+        loginEmail,
+        registerEmail,
+        logout,
+        setUser,
+        getBalance,
+      }}
     >
       {children}
     </AuthContext.Provider>

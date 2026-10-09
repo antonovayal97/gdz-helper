@@ -1,12 +1,19 @@
 /** Shared types used across client and server. */
 
-export type ExplanationMode = "answer" | "step-by-step" | "schoolboy";
+export type ExplanationMode = "answer" | "step-by-step" | "schoolboy" | "parent";
 
 export const EXPLANATION_MODES: { value: ExplanationMode; label: string }[] = [
   { value: "answer", label: "Только ответ" },
   { value: "step-by-step", label: "Пошаговое решение" },
-  { value: "schoolboy", label: "Объясни как школьнику" },
+  { value: "schoolboy", label: "Объясни как ребенку" },
+  { value: "parent", label: "Объяснить родителю" },
 ];
+
+/** Human-readable label for a stored mode value (unknown values pass through). */
+export function explanationModeLabel(mode: string | null | undefined): string | null {
+  if (!mode) return null;
+  return EXPLANATION_MODES.find((m) => m.value === mode)?.label ?? mode;
+}
 
 export type AIProviderName = "mock" | "openrouter" | "bitcoincom";
 
@@ -20,7 +27,6 @@ export interface AiStep {
 /** Structured AI result (already validated with Zod). */
 export interface AiResult {
   subject: string;
-  grade: number | null;
   recognizedProblem: string;
   answer: string;
   steps: AiStep[];
@@ -41,10 +47,23 @@ export interface AiUsage {
 export interface SolveProblemRequest {
   image: { data: Buffer; mimeType: string };
   mode: ExplanationMode;
+  /** Label of the chosen task as seen on the photo ("501", "9.15", "А5", ...). */
+  taskNumber?: string | null;
 }
 
 export interface SolveProblemResult {
   result: AiResult;
+  usage: AiUsage;
+}
+
+/** Detect task numbers visible on a photo (best-effort, no credit charge). */
+export interface DetectProblemsRequest {
+  image: { data: Buffer; mimeType: string };
+}
+
+export interface DetectProblemsResult {
+  /** Task labels found on the photo ("501", "9.15", "А5", ...). */
+  numbers: string[];
   usage: AiUsage;
 }
 
@@ -96,10 +115,13 @@ export interface ApiErrorBody {
       | "VALIDATION_ERROR"
       | "UNAUTHORIZED"
       | "INVALID_INIT_DATA"
+      | "INVALID_CREDENTIALS"
+      | "EMAIL_ALREADY_USED"
       | "INSUFFICIENT_CREDITS"
       | "IMAGE_TOO_LARGE"
       | "INVALID_IMAGE_TYPE"
       | "PROBLEM_NOT_RECOGNIZED"
+      | "NOT_A_TASK"
       | "AI_ERROR"
       | "AI_TIMEOUT"
       | "RATE_LIMITED"
@@ -114,7 +136,10 @@ export interface ApiErrorBody {
 /** User as exposed to the client. */
 export interface PublicUser {
   id: string;
-  telegramId: string;
+  /** present for accounts created inside the Telegram Mini App */
+  telegramId: string | null;
+  /** present for accounts created via email registration */
+  email: string | null;
   username: string | null;
   firstName: string | null;
   lastName: string | null;
@@ -128,7 +153,6 @@ export interface PublicUser {
 export interface SolutionSummary {
   id: string;
   subject: string;
-  grade: number | null;
   recognizedProblem: string;
   answer: string;
   createdAt: string;
@@ -150,4 +174,19 @@ export interface CreditPackageDto {
   credits: number;
   price: number;
   currency: string;
+}
+
+/** Kind of a balance ledger entry. */
+export type BalanceTxType = "signup" | "payment" | "referral" | "solution" | "refund";
+
+/** One balance change as exposed to the client (ledger of top-ups/write-offs). */
+export interface BalanceTransactionDto {
+  id: string;
+  type: BalanceTxType;
+  /** Signed credits: > 0 — пополнение, < 0 — списание. */
+  amount: number;
+  /** Balance right after the operation. */
+  balanceAfter: number;
+  description: string | null;
+  createdAt: string;
 }

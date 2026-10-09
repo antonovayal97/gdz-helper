@@ -1,8 +1,17 @@
 import { Prisma } from "@prisma/client";
+import { config } from "@/config";
 import { prisma } from "@/lib/db/prisma";
+import { RateLimitError, addStrike, strikeRetryAfterSec } from "@/lib/server/rate-limit";
 import { getAIProvider, AIProviderError } from "@/lib/ai";
 import { getStorage } from "@/lib/storage";
-import type { SolutionDetail, SolutionSummary, ExplanationMode } from "@/types";
+import { recordBalanceTx } from "@/services/balance";
+import type {
+  SolutionDetail,
+  SolutionSummary,
+  ExplanationMode,
+  AiResult,
+  AiUsage,
+} from "@/types";
 
 export const CREDIT_COST_PER_SOLUTION = 1;
 
@@ -12,6 +21,7 @@ export class SolutionError extends Error {
     public readonly code:
       | "INSUFFICIENT_CREDITS"
       | "PROBLEM_NOT_RECOGNIZED"
+      | "NOT_A_TASK"
       | "AI_ERROR"
       | "AI_TIMEOUT" = "AI_ERROR",
   ) {
@@ -25,18 +35,71 @@ export interface CreateSolutionInput {
   imageData: Buffer;
   mimeType: string;
   mode: ExplanationMode;
+  /**
+   * When the photo has several tasks, the chosen task labels as seen on the
+   * photo ("501", "9.15", "А5", ...). Empty/omitted → solve the whole photo
+   * as a single solution.
+   */
+  taskNumbers?: string[] | null;
+}
+
+interface SolveAttempt {
+  taskNumber: string | null;
+  result: AiResult;
+  usage: AiUsage;
+}
+
+/** Abuse-counter key for photos rejected by the content filter ("not a task"). */
+function nonTaskKey(userId: string): string {
+  return `notask:${userId}`;
+}
+
+/** Translate a provider error into the business error thrown to the API. */
+function mapProviderError(err: AIProviderError): SolutionError {
+  if (err.kind === "timeout") {
+    return new SolutionError("AI_TIMEOUT", "AI_TIMEOUT");
+  }
+  if (err.message === "NOT_A_TASK") {
+    return new SolutionError(
+      "На фотографии нет учебного задания. Мы решаем только задачи, примеры и упражнения из учебников, тетрадей и тестов.",
+      "NOT_A_TASK",
+    );
+  }
+  if (err.message === "PROBLEM_NOT_RECOGNIZED") {
+    return new SolutionError(
+      "Не удалось распознать задачу. Попробуйте сделать фотографию лучше.",
+      "PROBLEM_NOT_RECOGNIZED",
+    );
+  }
+  // Surface the real provider error (HTTP status + body) so the cause is
+  // diagnosable instead of a generic "AI_ERROR".
+  return new SolutionError(err.message, "AI_ERROR");
 }
 
 /**
- * The full solve pipeline. The credit is deducted ONLY after the AI succeeded,
- * atomically with the solution creation, so:
- *   - an AI error never costs the user a credit,
+ * The full solve pipeline. The credits are deducted ONLY for the tasks the AI
+ * succeeded on, atomically with the solution creation:
+ *   - an AI error never costs a credit,
+ *   - failed tasks are skipped (and reported back, not charged),
  *   - double-charging is impossible (atomic balance check + deduct).
  */
 export async function createSolution(input: CreateSolutionInput): Promise<{
-  solution: SolutionDetail;
+  solutions: SolutionDetail[];
   balance: number;
+  /** Task labels the AI failed to solve — never charged. */
+  failedTaskNumbers: string[];
 }> {
+  // Content-filter abuse guard: a user who keeps sending non-task photos is
+  // paused before we spend storage + another (free but billable) AI call.
+  const blockedFor = strikeRetryAfterSec(nonTaskKey(input.userId), config.limits.nonTaskLimit);
+  if (blockedFor > 0) {
+    throw new RateLimitError(
+      blockedFor,
+      `Вы слишком часто отправляли фото без учебных задач. ` +
+        `Мы решаем только задачи, примеры и упражнения. Повторная попытка через ${Math.ceil(blockedFor / 60)} мин.`,
+    );
+  }
+
   const provider = getAIProvider();
 
   // 1. Store the image. If anything below fails we clean it up.
@@ -55,68 +118,127 @@ export async function createSolution(input: CreateSolutionInput): Promise<{
   }
 
   try {
-    // 2. Call the AI (it will throw AIProviderError on any failure).
-    const { result, usage } = await provider.solveProblem({
-      image: { data: input.imageData, mimeType: input.mimeType },
-      mode: input.mode,
-    });
+    // 2. Call the AI once per chosen task (whole photo when no labels given).
+    const tasks: (string | null)[] =
+      input.taskNumbers && input.taskNumbers.length > 0 ? input.taskNumbers : [null];
 
-    // 3. Save solution + deduct credit atomically.
+    const attempts: SolveAttempt[] = [];
+    const failedTaskNumbers: string[] = [];
+    let firstFailure: unknown = null;
+
+    for (const taskNumber of tasks) {
+      try {
+        const { result, usage } = await provider.solveProblem({
+          image: { data: input.imageData, mimeType: input.mimeType },
+          mode: input.mode,
+          taskNumber,
+        });
+        attempts.push({ taskNumber, result, usage });
+      } catch (err) {
+        firstFailure ??= err;
+        if (taskNumber != null) failedTaskNumbers.push(taskNumber);
+      }
+    }
+
+    // Nothing solved → surface the first failure so the user sees a reason.
+    if (attempts.length === 0) {
+      const failure =
+        firstFailure instanceof SolutionError
+          ? firstFailure
+          : firstFailure instanceof AIProviderError
+            ? mapProviderError(firstFailure)
+            : new SolutionError("AI_ERROR", "AI_ERROR");
+      // Chronic "not a task" spam is eventually blocked up-front (see guard
+      // above); here we only record the strike for this rejection.
+      if (failure.code === "NOT_A_TASK") {
+        addStrike(nonTaskKey(input.userId), config.limits.nonTaskWindowMs);
+      }
+      throw failure;
+    }
+
+    // 3. Save every solved task + deduct credits atomically.
     const outcome = await prisma.$transaction(async (tx) => {
+      const count = attempts.length;
       const spent = await tx.user.updateMany({
-        where: { id: input.userId, balance: { gte: CREDIT_COST_PER_SOLUTION } },
-        data: { balance: { decrement: CREDIT_COST_PER_SOLUTION } },
+        where: { id: input.userId, balance: { gte: count * CREDIT_COST_PER_SOLUTION } },
+        data: { balance: { decrement: count * CREDIT_COST_PER_SOLUTION } },
       });
       if (spent.count === 0) {
         throw new SolutionError("У вас закончились решения", "INSUFFICIENT_CREDITS");
       }
 
-      const created = await tx.solution.create({
-        data: {
-          userId: input.userId,
-          imageUrl,
-          subject: result.subject,
-          grade: result.grade,
-          recognizedProblem: result.recognizedProblem,
-          answer: result.answer,
-          steps: result.steps as unknown as Prisma.InputJsonValue,
-          explanationMode: input.mode,
-          provider: usage.provider,
-          model: usage.model,
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
-          estimatedCost: usage.estimatedCost,
-          latencyMs: usage.latencyMs,
-          confidence: result.confidence,
-          aiStatus: usage.status,
-        },
-      });
-      const balance = await tx.user.findUnique({
+      const created = [];
+      for (const a of attempts) {
+        const row = await tx.solution.create({
+          data: {
+            userId: input.userId,
+            imageUrl,
+            subject: a.result.subject,
+            recognizedProblem: a.result.recognizedProblem,
+            answer: a.result.answer,
+            steps: a.result.steps as unknown as Prisma.InputJsonValue,
+            explanationMode: input.mode,
+            provider: a.usage.provider,
+            model: a.usage.model,
+            inputTokens: a.usage.inputTokens,
+            outputTokens: a.usage.outputTokens,
+            estimatedCost: a.usage.estimatedCost,
+            latencyMs: a.usage.latencyMs,
+            confidence: a.result.confidence,
+            aiStatus: a.usage.status,
+          },
+        });
+        created.push(row);
+      }
+
+      const balanceAfter = await tx.user.findUnique({
         where: { id: input.userId },
         select: { balance: true },
       });
-      return { created, balance: balance?.balance ?? 0 };
+
+      await recordBalanceTx(tx, {
+        userId: input.userId,
+        type: "solution",
+        amount: -count * CREDIT_COST_PER_SOLUTION,
+        balanceAfter: balanceAfter?.balance ?? 0,
+        // link to the first created solution row (one entry per solve request)
+        refId: created[0]?.id,
+      });
+
+      return { created, balance: balanceAfter?.balance ?? 0 };
     });
 
-    return { solution: toDetail(outcome.created), balance: outcome.balance };
+    return {
+      solutions: outcome.created.map(toDetail),
+      balance: outcome.balance,
+      failedTaskNumbers,
+    };
   } catch (err) {
     // AI failed — never deduct a credit. Clean up stored image to avoid orphans.
     if (storedKey) {
       await getStorage().delete(storedKey).catch(() => {});
     }
     if (err instanceof SolutionError) throw err;
-    if (err instanceof AIProviderError) {
-      if (err.kind === "timeout") {
-        throw new SolutionError("AI_TIMEOUT", "AI_TIMEOUT");
-      }
-      if (err.message === "PROBLEM_NOT_RECOGNIZED") {
-        throw new SolutionError(
-          "Не удалось распознать задачу. Попробуйте сделать фотографию лучше.",
-          "PROBLEM_NOT_RECOGNIZED",
-        );
-      }
-    }
+    if (err instanceof AIProviderError) throw mapProviderError(err);
     throw new SolutionError("AI_ERROR", "AI_ERROR");
+  }
+}
+
+/** Detect task labels on a photo. Best-effort + free — failures never block solving. */
+export async function detectProblemNumbers(input: {
+  imageData: Buffer;
+  mimeType: string;
+}): Promise<string[]> {
+  const provider = getAIProvider();
+  try {
+    const { numbers } = await provider.detectProblems({
+      image: { data: input.imageData, mimeType: input.mimeType },
+    });
+    return numbers ?? [];
+  } catch (err) {
+    // Detection is best-effort: on any failure, fall back to solving the whole photo.
+    console.error("[solution] detect numbers failed:", err);
+    return [];
   }
 }
 
@@ -128,7 +250,6 @@ export async function listSolutions(userId: string, limit = 20): Promise<Solutio
     select: {
       id: true,
       subject: true,
-      grade: true,
       recognizedProblem: true,
       answer: true,
       confidence: true,
@@ -148,7 +269,6 @@ export async function getSolution(
       id: true,
       imageUrl: true,
       subject: true,
-      grade: true,
       recognizedProblem: true,
       answer: true,
       steps: true,
@@ -166,7 +286,6 @@ export async function getSolution(
 interface SolutionRow {
   id: string;
   subject: string;
-  grade: number | null;
   recognizedProblem: string;
   answer: string;
   confidence: number | null;
@@ -182,7 +301,6 @@ function toSummary(row: SolutionRow): SolutionSummary {
   return {
     id: row.id,
     subject: row.subject,
-    grade: row.grade,
     recognizedProblem: row.recognizedProblem,
     answer: row.answer,
     confidence: row.confidence,

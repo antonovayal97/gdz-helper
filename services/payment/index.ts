@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { config } from "@/config";
 import { PaymentProvider } from "./provider";
 import { MockPaymentProvider } from "./mock";
+import { recordBalanceTx } from "@/services/balance";
 
 export class PaymentError extends Error {
   constructor(message: string, public readonly code = "PAYMENT_ERROR") {
@@ -106,9 +107,17 @@ export async function completePayment(paymentId: string): Promise<{ credits: num
       data: { status: "paid" },
     });
 
-    await tx.user.update({
+    const credited = await tx.user.update({
       where: { id: payment.userId },
       data: { balance: { increment: pkg.credits } },
+    });
+    await recordBalanceTx(tx, {
+      userId: payment.userId,
+      type: "payment",
+      amount: pkg.credits,
+      balanceAfter: credited.balance,
+      description: `Пополнение: ${pkg.name}`,
+      refId: payment.id,
     });
 
     // Referral reward: on the user's first successful payment, reward their referrer.
@@ -128,9 +137,17 @@ export async function completePayment(paymentId: string): Promise<{ credits: num
             reward: config.referral.reward,
           },
         });
-        await tx.user.update({
+        const referrer = await tx.user.update({
           where: { id: user.referredBy },
           data: { balance: { increment: config.referral.reward } },
+        });
+        await recordBalanceTx(tx, {
+          userId: user.referredBy,
+          type: "referral",
+          amount: config.referral.reward,
+          balanceAfter: referrer.balance,
+          description: "Бонус за приглашённого друга",
+          refId: payment.userId,
         });
       }
     }

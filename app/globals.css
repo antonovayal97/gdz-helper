@@ -87,6 +87,15 @@ body {
 }
 
 @layer utilities {
+  /*
+    Bottom padding for scrollable page content: reserves the fixed BottomNav
+    height (64px + safe-area) plus a 24px breathing gap, so the last card
+    isn't clipped behind the nav.
+  */
+  .pb-nav {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 24px);
+  }
+
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }

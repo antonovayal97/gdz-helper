@@ -13,6 +13,9 @@ export const MODEL_PRICING_USD: Record<string, { inputPer1M: number; outputPer1M
   "anthropic/claude-3.5-haiku": { inputPer1M: 0.8, outputPer1M: 4 },
   "anthropic/claude-3.5-sonnet": { inputPer1M: 3, outputPer1M: 15 },
   "google/gemini-2.0-flash-001": { inputPer1M: 0.1, outputPer1M: 0.4 },
+  "google/gemini-2.5-flash-lite": { inputPer1M: 0.1, outputPer1M: 0.4 },
+  "gemini-2.5-flash-lite": { inputPer1M: 0.1, outputPer1M: 0.4 },
+  "qwen/qwen3-vl-235b-a22b-instruct": { inputPer1M: 0.2, outputPer1M: 0.88 },
   "meta-llama/llama-3.3-70b-instruct": { inputPer1M: 0.25, outputPer1M: 0.4 },
 };
 
@@ -23,11 +26,7 @@ export const DEFAULT_PRICING_USD = { inputPer1M: 0.5, outputPer1M: 1.5 };
  * Estimate the cost of one AI call in USD.
  * Stored for later economic analysis; not used for user billing.
  */
-export function calculateAiCost(
-  model: string,
-  inputTokens: number,
-  outputTokens: number,
-): number {
+export function calculateAiCost(model: string, inputTokens: number, outputTokens: number): number {
   const pricing = MODEL_PRICING_USD[model] ?? DEFAULT_PRICING_USD;
   const cost =
     (inputTokens / 1_000_000) * pricing.inputPer1M +

@@ -1,21 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-context";
 import { useToast } from "@/components/toast-context";
 import { HomeState } from "@/components/states/home-state";
 import { ConfirmState } from "@/components/states/confirm-state";
 import { LoadingState } from "@/components/states/loading-state";
+import { DetectingState } from "@/components/states/detecting-state";
+import { TaskPickState } from "@/components/states/task-pick-state";
 import { optimizeImage, type OptimizedImage } from "@/lib/client/image";
 import { apiFetch, isApiError } from "@/lib/client/api";
-import type { SolutionSummary, SolutionDetail, ExplanationMode } from "@/types";
+import type { SolutionDetail, ExplanationMode } from "@/types";
 
-type Phase = "home" | "confirm" | "solving";
+type Phase = "home" | "confirm" | "detecting" | "pick" | "solving";
 
 interface SolvingResponse {
-  solution: SolutionDetail;
+  solutions: SolutionDetail[];
   balance: number;
+  failedTaskNumbers: string[];
 }
 
 export function MainSolver() {
@@ -27,18 +30,10 @@ export function MainSolver() {
   const [photo, setPhoto] = useState<OptimizedImage | null>(null);
   const [mode, setMode] = useState<ExplanationMode>("step-by-step");
   const [solving, setSolving] = useState(false);
-  const [recent, setRecent] = useState<SolutionSummary[] | null>(null);
+  const [detectedNumbers, setDetectedNumbers] = useState<string[]>([]);
 
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
-
-  // Load recent solutions once authenticated.
-  useEffect(() => {
-    if (!user) return;
-    apiFetch<{ solutions: SolutionSummary[] }>("/api/solutions")
-      .then((res) => setRecent(res.solutions))
-      .catch(() => setRecent([]));
-  }, [user]);
 
   const handleFile = useCallback(
     async (file: File | undefined | null) => {
@@ -46,6 +41,8 @@ export function MainSolver() {
       try {
         const optimized = await optimizeImage(file);
         setPhoto(optimized);
+        setMode("step-by-step");
+        setDetectedNumbers([]);
         setPhase("confirm");
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Не удалось обработать фото.");
@@ -69,6 +66,7 @@ export function MainSolver() {
   const backToHome = useCallback(() => {
     setPhoto(null);
     setMode("step-by-step");
+    setDetectedNumbers([]);
     setPhase("home");
   }, []);
 
@@ -76,43 +74,115 @@ export function MainSolver() {
     backToHome();
   }, [backToHome]);
 
+  const returnToConfirm = useCallback(() => {
+    setDetectedNumbers([]);
+    setSolving(false);
+    setPhase("confirm");
+  }, []);
+
+  /** The actual paid solve call. `taskNumbers` may be null/empty → solve the whole photo. */
+  const runSolve = useCallback(
+    async (taskNumbers: string[] | null) => {
+      if (!photo) return;
+      setSolving(true);
+      setPhase("solving");
+
+      try {
+        const res = await apiFetch<SolvingResponse>("/api/solutions", {
+          method: "POST",
+          json: { image: photo.dataUrl, mode, taskNumbers },
+        });
+
+        // Refresh the local balance.
+        if (user) {
+          setUser({ ...user, balance: res.balance });
+        }
+
+        // Some tasks failed to solve — let the user know which ones are missing.
+        if (res.failedTaskNumbers.length > 0) {
+          toast.error(
+            `Не удалось решить задачи ${res.failedTaskNumbers.join(", ")} — за них ничего не списано`,
+          );
+        }
+
+        // Go to the result screen. When several tasks were solved, pass all
+        // solution ids (and their task numbers) so the user can switch between them.
+        const first = res.solutions[0];
+        if (first) {
+          if (res.solutions.length > 1) {
+            toast.success(`Решено задач: ${res.solutions.length}`);
+            const ids = res.solutions.map((s) => s.id).join(",");
+            // Solutions come back in request order with failures skipped, so the
+            // selected numbers minus the failed ones line up 1:1 with solutions.
+            const solvedNumbers = (taskNumbers ?? []).filter(
+              (n) => !res.failedTaskNumbers.includes(n),
+            );
+            const nums =
+              solvedNumbers.length === res.solutions.length
+                ? `&nums=${solvedNumbers.join(",")}`
+                : "";
+            router.replace(`/result/${first.id}?ids=${ids}${nums}`);
+          } else {
+            router.replace(`/result/${first.id}`);
+          }
+        } else {
+          // Everything failed — stay on the pick screen so the user can retry.
+          setPhase("confirm");
+        }
+      } catch (err) {
+        if (isApiError(err) && err.code === "INSUFFICIENT_CREDITS") {
+          toast.error("У вас закончились решения");
+          router.replace("/balance");
+        } else if (isApiError(err) && err.code === "NOT_A_TASK") {
+          // The photo holds no school task — drop it so the user takes a new one.
+          toast.error(err.message);
+          backToHome();
+        } else if (isApiError(err)) {
+          toast.error(err.message);
+          setPhase("confirm");
+        } else {
+          toast.error("Не удалось решить задачу. Попробуйте ещё раз.");
+          setPhase("confirm");
+        }
+        setSolving(false);
+      }
+    },
+    [photo, mode, user, setUser, toast, router, backToHome],
+  );
+
+  /** Solve — first detect task numbers, then ask or solve directly. */
   const solve = useCallback(async () => {
     if (!photo || solving) return;
     setSolving(true);
-    setPhase("solving");
+    setPhase("detecting");
 
     try {
-      const res = await apiFetch<SolvingResponse>("/api/solutions", {
+      const res = await apiFetch<{ ok: boolean; numbers: string[] }>("/api/solutions/detect", {
         method: "POST",
-        json: { image: photo.dataUrl, mode },
+        json: { image: photo.dataUrl },
       });
+      const numbers = (res?.numbers ?? []).map((n) => String(n).trim()).filter(Boolean);
 
-      // Refresh the local balance.
-      if (user) {
-        setUser({ ...user, balance: res.balance });
+      if (numbers.length >= 2) {
+        // Several tasks on the photo → ask the user which one to solve.
+        setDetectedNumbers(numbers);
+        setPhase("pick");
+        return;
       }
 
-      // Go to the result screen.
-      router.replace(`/result/${res.solution.id}`);
-    } catch (err) {
-      if (isApiError(err) && err.code === "INSUFFICIENT_CREDITS") {
-        toast.error("У вас закончились решения");
-        router.replace("/balance");
-      } else if (isApiError(err)) {
-        toast.error(err.message);
-        setPhase("confirm");
-      } else {
-        toast.error("Не удалось решить задачу. Попробуйте ещё раз.");
-        setPhase("confirm");
-      }
-      setSolving(false);
+      // 0 or 1 number → no need to ask; use it (or solve whole photo).
+      await runSolve(numbers[0] ? [numbers[0]] : null);
+    } catch {
+      // Detection is best-effort; on any network error, fall back to solving the whole photo.
+      toast.info("Не удалось распознать номера задач — решим всё фото.");
+      await runSolve(null);
     }
-  }, [photo, solving, mode, user, setUser, toast, router]);
+  }, [photo, solving, runSolve, toast]);
 
   return (
-    <div className="mx-auto min-h-dvh w-full max-w-md pb-24">
+    <div className="mx-auto min-h-dvh w-full max-w-md pb-nav">
       {phase === "home" && (
-        <HomeState recent={recent} onPickCamera={pickCamera} onPickGallery={pickGallery} />
+        <HomeState onPickCamera={pickCamera} onPickGallery={pickGallery} />
       )}
       {phase === "confirm" && photo && (
         <ConfirmState
@@ -124,6 +194,16 @@ export function MainSolver() {
           onRemove={removePhoto}
           solving={solving}
           balance={user?.balance ?? null}
+        />
+      )}
+      {phase === "detecting" && <DetectingState />}
+      {phase === "pick" && (
+        <TaskPickState
+          numbers={detectedNumbers}
+          mode={mode}
+          onModeChange={setMode}
+          onBack={returnToConfirm}
+          onSolve={(nums) => runSolve(nums)}
         />
       )}
       {phase === "solving" && <LoadingState />}

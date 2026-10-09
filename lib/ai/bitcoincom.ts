@@ -1,31 +1,23 @@
-import type { SolveProblemRequest, SolveProblemResult } from "@/types";
 import { config } from "@/config";
-import { AIProvider, AIProviderError } from "./provider";
+import { OpenAICompatibleProvider } from "./openai-compatible";
 
 /**
- * BitcoinComProvider — placeholder for the future Bitcoin.com AI integration.
+ * BitcoinComProvider — calls the Bitcoin.com AI API (ai.bitcoin.com).
  *
- * To connect it:
- *   1. implement the real API call here (same OpenAI-compatible shape
- *      that OpenRouterProvider uses),
- *   2. the rest of the app needs no changes (it talks to AIProvider).
+ * Bitcoin.com AI is an OpenRouter-style / nano-gpt partner: it is
+ * OpenAI-compatible at `https://nano-gpt.com/api/v1`, so the request
+ * logic is fully shared with OpenAICompatibleProvider. An ai.bitcoin.com
+ * API key works directly on that endpoint.
  */
-export class BitcoinComProvider implements AIProvider {
-  readonly name = "bitcoincom";
-  readonly model: string;
-
+export class BitcoinComProvider extends OpenAICompatibleProvider {
   constructor() {
-    this.model = config.ai.bitcoincom.model || "bitcoincom/ai-model";
-  }
-
-  isAvailable(): boolean {
-    return Boolean(config.ai.bitcoincom.apiKey) && Boolean(config.ai.bitcoincom.model);
-  }
-
-  async solveProblem(_request: SolveProblemRequest): Promise<SolveProblemResult> {
-    throw new AIProviderError(
-      "Bitcoin.com AI provider is not implemented yet. Set AI_PROVIDER=mock or openrouter.",
-      "network",
-    );
+    super({
+      name: config.ai.bitcoincom.name,
+      apiKey: config.ai.bitcoincom.apiKey,
+      baseUrl: config.ai.bitcoincom.baseUrl,
+      model: config.ai.bitcoincom.model,
+      cheapModel: config.ai.bitcoincom.cheapModel,
+      cheapMode: config.ai.cheapMode,
+    });
   }
 }

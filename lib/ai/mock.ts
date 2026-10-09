@@ -1,4 +1,11 @@
-import type { AiResult, AiUsage, SolveProblemRequest, SolveProblemResult } from "@/types";
+import type {
+  AiResult,
+  AiUsage,
+  DetectProblemsRequest,
+  DetectProblemsResult,
+  SolveProblemRequest,
+  SolveProblemResult,
+} from "@/types";
 import { AIProvider, AIProviderError } from "./provider";
 
 /**
@@ -27,7 +34,6 @@ export class MockAIProvider implements AIProvider {
 
     const result: AiResult = {
       subject: "math",
-      grade: 8,
       recognizedProblem:
         "Решите уравнение: 2x + 5 = 15. Найдите x. (условие распознано с фотографии)",
       answer: "x = 5",
@@ -73,5 +79,38 @@ export class MockAIProvider implements AIProvider {
     };
 
     return { result, usage };
+  }
+
+  async detectProblems(request: DetectProblemsRequest): Promise<DetectProblemsResult> {
+    await new Promise((r) => setTimeout(r, 700 + Math.random() * 600));
+    const started = Date.now();
+
+    // Deterministic-ish mock: base the detected count on the image size.
+    const n = request.image.data.length % 3;
+    if (n === 2) {
+      return {
+        numbers: ["501", "502", "503"],
+        usage: this.mockUsage(1200, 80, started),
+      };
+    }
+    if (n === 1) {
+      return {
+        numbers: ["А5"],
+        usage: this.mockUsage(900, 40, started),
+      };
+    }
+    return { numbers: [], usage: this.mockUsage(700, 20, started) };
+  }
+
+  private mockUsage(inputTokens: number, outputTokens: number, started: number): AiUsage {
+    return {
+      provider: this.name,
+      model: this.model,
+      inputTokens,
+      outputTokens,
+      estimatedCost: 0.0004,
+      latencyMs: Date.now() - started,
+      status: "ok",
+    };
   }
 }

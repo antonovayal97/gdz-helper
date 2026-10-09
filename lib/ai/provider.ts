@@ -1,4 +1,10 @@
-import type { AiUsage, SolveProblemRequest, SolveProblemResult } from "@/types";
+import type {
+  AiUsage,
+  DetectProblemsRequest,
+  DetectProblemsResult,
+  SolveProblemRequest,
+  SolveProblemResult,
+} from "@/types";
 
 /**
  * AIProvider — the abstraction for every AI backend (OpenRouter, Bitcoin.com AI, ...).
@@ -17,6 +23,12 @@ export interface AIProvider {
    * Throws on failure — the caller must NOT deduct a credit on error.
    */
   solveProblem(request: SolveProblemRequest, signal?: AbortSignal): Promise<SolveProblemResult>;
+
+  /**
+   * Best-effort detection of task numbers visible on a photo.
+   * No credit is charged for this call.
+   */
+  detectProblems(request: DetectProblemsRequest, signal?: AbortSignal): Promise<DetectProblemsResult>;
 
   /** Cheap availability check (e.g. API key configured). */
   isAvailable(): boolean;
