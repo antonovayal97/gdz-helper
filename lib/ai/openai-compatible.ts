@@ -48,6 +48,7 @@ export class OpenAICompatibleProvider implements AIProvider {
   private readonly apiKey: string;
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
+  private readonly maxTokens: number;
   private readonly retries: number;
   private readonly retryDelayMs: number;
   private readonly extraHeaders: Record<string, string>;
@@ -61,6 +62,7 @@ export class OpenAICompatibleProvider implements AIProvider {
     this.apiKey = options.apiKey;
     this.baseUrl = options.baseUrl;
     this.timeoutMs = config.ai.timeoutMs;
+    this.maxTokens = config.ai.maxTokens;
     this.retries = Math.max(0, config.ai.retries);
     this.retryDelayMs = Math.max(0, config.ai.retryDelayMs);
     this.extraHeaders = options.extraHeaders ?? {};
@@ -135,7 +137,7 @@ export class OpenAICompatibleProvider implements AIProvider {
                 ],
               },
             ],
-            max_tokens: 3000,
+            max_tokens: this.maxTokens,
             temperature: 0.3,
             // ask the model for JSON output when supported
             response_format: { type: "json_object" },
@@ -183,7 +185,7 @@ export class OpenAICompatibleProvider implements AIProvider {
     const latencyMs = Date.now() - started;
 
     let data: {
-      choices?: { message?: { content?: string } }[];
+      choices?: { message?: { content?: string }; finish_reason?: string }[];
       usage?: { prompt_tokens?: number; completion_tokens?: number };
     };
     try {
@@ -192,7 +194,9 @@ export class OpenAICompatibleProvider implements AIProvider {
       throw new AIProviderError(`Failed to parse ${this.name} response`, "parse");
     }
 
-    const rawText = data.choices?.[0]?.message?.content ?? "";
+    const choice = data.choices?.[0];
+    const rawText = choice?.message?.content ?? "";
+    const truncated = choice?.finish_reason === "length";
     let parsed;
     try {
       // strip any code fences the model may have added
@@ -207,8 +211,14 @@ export class OpenAICompatibleProvider implements AIProvider {
       console.warn(
         `[ai] ${this.name} response failed validation:`,
         err instanceof Error ? err.message : String(err),
+        `| finish_reason: ${choice?.finish_reason ?? "?"}`,
         `| raw: ${rawText.slice(0, 500)}`,
       );
+      // A JSON cut off by the output limit is a different failure than a
+      // genuinely malformed reply: say so instead of "invalid JSON".
+      if (truncated) {
+        throw new AIProviderError("RESPONSE_TRUNCATED", "response");
+      }
       throw new AIProviderError("AI returned invalid JSON or missing fields", "response");
     }
 
@@ -222,6 +232,13 @@ export class OpenAICompatibleProvider implements AIProvider {
     // If the model itself says it couldn't read the problem, surface a clean error.
     if (!aiResult.recognizedProblem && aiResult.confidence <= 0.2) {
       throw new AIProviderError("PROBLEM_NOT_RECOGNIZED", "response");
+    }
+
+    // The model read the photo but returned no final answer (typically: the
+    // condition was cut off on the photo, so part б) is unsolvable). That is
+    // an honest refusal, not a broken reply — report it cleanly.
+    if (!aiResult.answer) {
+      throw new AIProviderError("PROBLEM_NOT_SOLVED", "response");
     }
 
     const inputTokens = data.usage?.prompt_tokens ?? null;

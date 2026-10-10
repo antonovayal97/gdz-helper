@@ -37,6 +37,8 @@ interface AuthContextValue {
   registerEmail: (email: string, password: string, referralCode?: string) => Promise<void>;
   logout: () => Promise<void>;
   setUser: (user: PublicUser | null) => void;
+  /** Marks the first-run onboarding as completed (or skipped) on the server. */
+  completeOnboarding: () => Promise<void>;
   getBalance: () => Promise<number>;
 }
 
@@ -144,6 +146,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setReady(true);
   }, []);
 
+  const completeOnboarding = useCallback(async () => {
+    // Optimistically flip the local flag so the tour closes even if the
+    // network call fails (worst case it is shown again next session).
+    if (user) {
+      const done = { ...user, onboarded: true };
+      setUser(done);
+      setCachedUser(done);
+    }
+    try {
+      const res = await apiFetch<{ user: PublicUser }>("/api/me", {
+        method: "PATCH",
+        json: { onboarded: true },
+      });
+      setUser(res.user);
+      setCachedUser(res.user);
+    } catch (err) {
+      console.error("[auth] onboarding sync failed", err);
+    }
+  }, [user]);
+
   const getBalance = useCallback(async () => {
     if (!getToken()) return 0;
     try {
@@ -185,6 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         registerEmail,
         logout,
         setUser,
+        completeOnboarding,
         getBalance,
       }}
     >

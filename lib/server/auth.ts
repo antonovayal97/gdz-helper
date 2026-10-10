@@ -142,6 +142,7 @@ export function toPublicUser(user: {
   photoUrl: string | null;
   balance: number;
   referralCode: string;
+  onboardedAt: Date | null;
   createdAt: Date;
 }): PublicUser {
   return {
@@ -154,6 +155,7 @@ export function toPublicUser(user: {
     photoUrl: user.photoUrl,
     balance: user.balance,
     referralCode: user.referralCode,
+    onboarded: user.onboardedAt != null,
     createdAt: user.createdAt.toISOString(),
   };
 }

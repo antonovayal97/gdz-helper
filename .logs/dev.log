@@ -217,3 +217,4 @@ Source: local storage / Source is empty
  GET /api/solutions 200 in 26ms (next.js: 5ms, application-code: 21ms)
  GET /api/solutions 200 in 40ms (next.js: 4ms, application-code: 36ms)
  GET / 200 in 31ms (next.js: 8ms, application-code: 24ms)
+[?25h

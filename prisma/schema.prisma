@@ -24,6 +24,8 @@ model User {
   balance      Int      @default(0) @map("balance")
   referralCode String   @unique @map("referral_code")
   referredBy   String?  @map("referred_by")
+  // set once the user has seen/skipped the new-user onboarding
+  onboardedAt  DateTime? @map("onboarded_at")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 

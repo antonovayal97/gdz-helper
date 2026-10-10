@@ -61,6 +61,10 @@ export const config = {
       baseUrl: process.env.BITCOINCOM_BASE_URL ?? "https://nano-gpt.com/api/v1",
     },
     timeoutMs: num(process.env.AI_TIMEOUT_MS, 120_000),
+    // Output budget for one solution. Long step-by-step answers for complex
+    // problems (e.g. geometry proofs) exceed 3000 tokens and the JSON gets
+    // cut off mid-string — which used to surface as "invalid JSON".
+    maxTokens: num(process.env.AI_MAX_TOKENS, 8000),
     // Number of additional attempts after a transient network failure (0 = no retry).
     retries: num(process.env.AI_RETRIES, 2),
     // Base delay between retries, grows linearly (1s, 2s, 3s, ...).

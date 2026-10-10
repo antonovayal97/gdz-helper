@@ -71,6 +71,20 @@ function mapProviderError(err: AIProviderError): SolutionError {
       "PROBLEM_NOT_RECOGNIZED",
     );
   }
+  if (err.message === "PROBLEM_NOT_SOLVED") {
+    // The condition was read but the model could not finish the solution —
+    // almost always because the photo cut the condition off mid-sentence.
+    return new SolutionError(
+      "Не удалось решить задачу: похоже, условие сфотографировано не целиком (не хватает данных). Переснимите задачу полностью и повторите попытку.",
+      "PROBLEM_NOT_RECOGNIZED",
+    );
+  }
+  if (err.message === "RESPONSE_TRUNCATED") {
+    return new SolutionError(
+      "Решение получилось слишком длинным и оборвалось. Попробуйте режим «только ответ» или отправьте фото ещё раз.",
+      "AI_ERROR",
+    );
+  }
   // Surface the real provider error (HTTP status + body) so the cause is
   // diagnosable instead of a generic "AI_ERROR".
   return new SolutionError(err.message, "AI_ERROR");

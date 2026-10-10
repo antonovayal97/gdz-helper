@@ -2,6 +2,7 @@
 
 import { useAuth } from "@/components/auth-context";
 import { AuthScreen } from "@/components/auth-screen";
+import { Onboarding } from "@/components/onboarding";
 import { BottomNav } from "@/components/navigation";
 
 /**
@@ -25,6 +26,11 @@ export function PageShell({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return <AuthScreen />;
+  }
+
+  // First-run tour for brand-new accounts (email or Telegram).
+  if (!user.onboarded) {
+    return <Onboarding />;
   }
 
   return (

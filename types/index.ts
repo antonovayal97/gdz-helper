@@ -146,6 +146,8 @@ export interface PublicUser {
   photoUrl: string | null;
   balance: number;
   referralCode: string;
+  /** true once the new-user onboarding tour has been completed or skipped */
+  onboarded: boolean;
   createdAt: string;
 }
 
