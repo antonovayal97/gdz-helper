@@ -1,13 +1,21 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdir, writeFile, rm, readFile } from "node:fs/promises";
 import path from "node:path";
 import { config } from "@/config";
-import { StorageProvider, StoredFile, UploadInput } from "./provider";
+import { StorageProvider, StoredFile, StoredObject, UploadInput } from "./provider";
 
 const EXT_BY_MIME: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
   "image/webp": "webp",
+  "image/jpg": "jpg",
+};
+
+const MIME_BY_EXT: Record<string, string> = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
 };
 
 /**
@@ -52,6 +60,13 @@ export class LocalStorageProvider implements StorageProvider {
   async getUrl(key: string): Promise<string> {
     const base = config.app.url.replace(/\/$/, "");
     return `${base}/api/files/${key}`;
+  }
+
+  async read(key: string): Promise<StoredObject> {
+    const abs = this.resolve(key);
+    const mimeType = MIME_BY_EXT[path.extname(abs).toLowerCase()] ?? "application/octet-stream";
+    const data = await readFile(abs);
+    return { data, mimeType };
   }
 
   /** Resolve a URL path like `2026/10/<id>.jpg` to an absolute disk path. */

@@ -9,17 +9,17 @@ import { config } from "@/config";
 export const dynamic = "force-dynamic";
 
 const bodySchema = z.object({
-  packageId: z.string().min(1),
+  credits: z.number().int().min(1),
 });
 
-/** POST /api/payments/create — create a pending payment for a package. */
+/** POST /api/payments/create — create a pending payment for a balance top-up. */
 export async function POST(request: Request): Promise<NextResponse> {
   try {
     const user = await requireUser();
     rateLimit(`paycreate:${user.id}`, { limit: 30, windowMs: 60 * 60 * 1000 });
 
     const parsed = bodySchema.parse(await request.json());
-    const payment = await createPayment(user.id, parsed.packageId);
+    const payment = await createPayment(user.id, parsed.credits);
 
     return NextResponse.json({
       ok: true,

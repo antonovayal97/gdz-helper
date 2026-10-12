@@ -90,6 +90,12 @@ export const config = {
   payments: {
     provider: (process.env.PAYMENT_PROVIDER ?? "mock") as "mock" | "telegram-stars",
     allowMockPayments: bool(process.env.ALLOW_MOCK_PAYMENTS, false) && !isProd,
+    // Price in RUB for one credit (⚡) on a custom balance top-up.
+    creditPrice: num(process.env.CREDIT_PRICE, 1.5),
+    currency: process.env.TOPUP_CURRENCY ?? "RUB",
+    // Bounds (in credits) for a single custom top-up.
+    minTopupCredits: num(process.env.MIN_TOPUP_CREDITS, 1),
+    maxTopupCredits: num(process.env.MAX_TOPUP_CREDITS, 1000),
   },
 
   referral: {
@@ -107,5 +113,28 @@ export const config = {
     // within the window, new solve requests are paused until it resets.
     nonTaskLimit: num(process.env.NON_TASK_LIMIT, 5),
     nonTaskWindowMs: num(process.env.NON_TASK_WINDOW_MS, 60 * 60 * 1000),
+  },
+
+  // Background worker for the async solve queue.
+  jobs: {
+    // Runs the worker in-process (single instance). Set false to run it
+    // as a separate process later.
+    workerEnabled: bool(process.env.JOBS_WORKER_ENABLED, true),
+    // How many solutions may run in parallel towards the AI provider.
+    concurrency: num(process.env.JOBS_CONCURRENCY, 30),
+    // How often the worker polls the queue for new jobs.
+    pollIntervalMs: num(process.env.JOBS_POLL_INTERVAL_MS, 2000),
+    // A job stuck in "processing" longer than this (crashed process) is
+    // reclaimed back to "queued" and retried.
+    staleAfterMs: num(process.env.JOBS_STALE_AFTER_MS, 15 * 60 * 1000),
+    // Total processing attempts for one job (claims after rate-limit requeue
+    // or crash reclaim count too). Past this the job fails as "overloaded".
+    maxAttempts: num(process.env.JOBS_MAX_ATTEMPTS, 5),
+    // Upper bound for a throttled retry delay. A daily-limit Retry-After can
+    // point at midnight UTC; we never park a single job that long.
+    rateLimitMaxDelayMs: num(process.env.JOBS_RATE_LIMIT_MAX_DELAY_MS, 10 * 60 * 1000),
+    // Cap on concurrent synchronous detect calls. Over the cap the client
+    // gets a 429 and degrades to solving the whole photo.
+    detectConcurrency: num(process.env.JOBS_DETECT_CONCURRENCY, 8),
   },
 } as const;

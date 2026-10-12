@@ -5,7 +5,7 @@ import { handleError } from "@/lib/server/api";
 import { rateLimit } from "@/lib/server/rate-limit";
 import { validateImage } from "@/lib/server/image";
 import { normalizeTaskLabel } from "@/lib/ai/schema";
-import { createSolution, listSolutions } from "@/services/solution";
+import { createSolutionJob, listSolutions } from "@/services/solution";
 import { EXPLANATION_MODES, type ExplanationMode } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -45,7 +45,7 @@ export async function GET(): Promise<NextResponse> {
   }
 }
 
-/** POST /api/solutions — solve one or several tasks from a photo. */
+/** POST /api/solutions — enqueue a solve request, return jobId to poll. */
 export async function POST(request: Request): Promise<NextResponse> {
   try {
     const user = await requireUser();
@@ -54,7 +54,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const parsed = bodySchema.parse(await request.json());
     const image = validateImage(parsed.image);
 
-    const { solutions, balance, failedTaskNumbers } = await createSolution({
+    const { jobId } = await createSolutionJob({
       userId: user.id,
       imageData: image.data,
       mimeType: image.mimeType,
@@ -62,7 +62,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       taskNumbers: parsed.taskNumbers ?? null,
     });
 
-    return NextResponse.json({ ok: true, solutions, balance, failedTaskNumbers });
+    return NextResponse.json({ ok: true, jobId, status: "queued" });
   } catch (err) {
     return handleError(err);
   }

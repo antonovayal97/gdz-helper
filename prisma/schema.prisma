@@ -30,6 +30,7 @@ model User {
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   solutions           Solution[]
+  solutionJobs        SolutionJob[]
   payments            Payment[]
   referralsMade       Referral[]           @relation("ReferralsMade")
   referral            Referral?            @relation("ReferredBy")
@@ -82,15 +83,19 @@ model CreditPackage {
 model Payment {
   id                String   @id @default(cuid())
   userId            String   @map("user_id")
-  packageId         String   @map("package_id")
+  /// Legacy: package payments used to be the only way to top up. Custom
+  /// balance top-ups have no package, so this is now optional.
+  packageId         String?  @map("package_id")
+  /// Credits (⚡) this payment grants. Always set for new top-ups.
+  credits           Int?     @map("credits")
   amount            Float    @map("amount")
   currency          String   @default("RUB") @map("currency")
   status            String   @default("pending") @map("status") // pending | paid | failed | refunded
   telegramPaymentId String?  @unique @map("telegram_payment_id")
   createdAt         DateTime @default(now()) @map("created_at")
 
-  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  package CreditPackage @relation(fields: [packageId], references: [id])
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  package CreditPackage? @relation(fields: [packageId], references: [id])
 
   @@index([userId, status])
   @@index([status])
@@ -116,6 +121,40 @@ model BalanceTransaction {
 
   @@index([userId, createdAt])
   @@map("balance_transactions")
+}
+
+/// Async solve-queue entry: created by POST /api/solutions (status "queued"),
+/// then a background worker runs the AI + credit transaction and flips the
+/// status to "done" (with solution ids) or "error" (with a client error code).
+model SolutionJob {
+  id                 String   @id @default(cuid())
+  userId             String   @map("user_id")
+  /// queued | processing | done | error
+  status             String   @default("queued") @map("status")
+  mode               String   @map("mode")
+  /// Task labels to solve, null/empty = whole photo
+  taskNumbers        Json?    @map("task_numbers")
+  imageKey           String   @map("image_key")
+  imageUrl           String   @map("image_url")
+  attempts           Int      @default(0) @map("attempts")
+  /// Set on "done" — ids of created Solution rows (1 per solved task)
+  solutionIds        Json?    @map("solution_ids")
+  /// Task labels the AI failed to solve (never charged)
+  failedTaskNumbers  Json?    @map("failed_task_numbers")
+  errorCode          String?  @map("error_code")
+  errorMessage       String?  @map("error_message")
+  createdAt          DateTime @default(now()) @map("created_at")
+  startedAt          DateTime? @map("started_at")
+  finishedAt         DateTime? @map("finished_at")
+  /// Backoff boundary for throttled (requeued) jobs; null = ready immediately.
+  runAfterAt         DateTime? @map("run_after_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([status, runAfterAt])
+  @@index([userId, createdAt])
+  @@map("solution_jobs")
 }
 
 model Referral {

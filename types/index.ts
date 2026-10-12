@@ -33,7 +33,11 @@ export interface AiResult {
   confidence: number;
 }
 
-/** Cost/usage accounting for a single AI request. */
+/**
+ * Cost/usage accounting for a single AI request.
+ * `estimatedCost` is in USD — the exact per-request charge reported by the
+ * provider (`usage.cost`) when available, otherwise a pricing-table estimate.
+ */
 export interface AiUsage {
   provider: string;
   model: string;
@@ -168,14 +172,31 @@ export interface SolutionDetail extends SolutionSummary {
   explanationMode: string | null;
   model: string | null;
   provider: string | null;
+  /** AI cost estimate for this solution, in USD. */
+  estimatedCost: number | null;
 }
 
-export interface CreditPackageDto {
+/** Lifecycle of an async solve queue entry. */
+export type SolutionJobStatus = "queued" | "processing" | "done" | "error";
+
+/** As exposed to the client via GET /api/solutions/status?jobId=... */
+export interface SolutionJobDto {
   id: string;
-  name: string;
-  credits: number;
-  price: number;
-  currency: string;
+  status: SolutionJobStatus;
+  /** present when status === "done" — ids of created Solution rows */
+  solutionIds: string[];
+  /** task labels the AI failed to solve (never charged) */
+  failedTaskNumbers: string[];
+  /** when status === "error" */
+  errorCode: string | null;
+  errorMessage: string | null;
+  /**
+   * While status === "queued" — 1-based position in the live FIFO queue
+   * (queued + processing jobs created before this one). null otherwise.
+   */
+  queuePosition: number | null;
+  /** Total live jobs (queued + processing) at poll time, including this one. */
+  queueSize: number;
 }
 
 /** Kind of a balance ledger entry. */

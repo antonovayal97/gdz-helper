@@ -1,17 +1,17 @@
-import type { CreditPackage } from "@prisma/client";
-
 /** PaymentProvider — abstraction for payment gateways (Telegram Stars, ...). */
 export interface PaymentProvider {
   readonly name: string;
 
   /**
-   * Initiate a payment for the given package.
+   * Initiate a payment for the given top-up.
    * Returns an opaque provider transaction id.
    */
   initiatePayment(input: {
     userId: string;
     paymentId: string;
-    package: CreditPackage;
+    amount: number;
+    currency: string;
+    credits: number;
   }): Promise<{ providerPaymentId: string }>;
 
   /** Verify a provider webhook payload (real gateways do signature checks). */

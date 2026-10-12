@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Camera, ImagePlus, Zap } from "lucide-react";
+import { Camera, ImagePlus } from "lucide-react";
 import { useAuth } from "@/components/auth-context";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,9 +26,8 @@ export function HomeState({ onPickCamera, onPickGallery }: HomeStateProps) {
 
       {/* Balance chip */}
       <div className="flex items-center gap-2 rounded-2xl border border-border bg-card px-4 py-3">
-        <Zap className="h-5 w-5 shrink-0 text-amber-400" />
         <p className="text-sm text-hint">
-          Осталось:{" "}
+          Баланс:{" "}
           <span className="font-bold text-foreground">
             {user ? formatCredits(user.balance) : "—"}
           </span>

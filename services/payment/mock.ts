@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import type { CreditPackage } from "@prisma/client";
 import { PaymentProvider } from "./provider";
 
 /**
@@ -14,7 +13,9 @@ export class MockPaymentProvider implements PaymentProvider {
   async initiatePayment(_input: {
     userId: string;
     paymentId: string;
-    package: CreditPackage;
+    amount: number;
+    currency: string;
+    credits: number;
   }): Promise<{ providerPaymentId: string }> {
     return { providerPaymentId: `mock_${randomUUID()}` };
   }

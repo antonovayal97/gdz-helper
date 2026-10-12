@@ -41,6 +41,8 @@ export class AIProviderError extends Error {
     message: string,
     public readonly kind: AIErrorKind = "network",
     public readonly status?: number,
+    /** Parsed `Retry-After` header in ms (429/5xx throttling), when present. */
+    public readonly retryAfterMs?: number,
   ) {
     super(message);
     this.name = "AIProviderError";

@@ -8,6 +8,8 @@ import { recordBalanceTx } from "@/services/balance";
 import type {
   SolutionDetail,
   SolutionSummary,
+  SolutionJobDto,
+  SolutionJobStatus,
   ExplanationMode,
   AiResult,
   AiUsage,
@@ -47,6 +49,19 @@ interface SolveAttempt {
   taskNumber: string | null;
   result: AiResult;
   usage: AiUsage;
+}
+
+/**
+ * Best-effort image cleanup. Failures are logged, not thrown: a storage key
+ * without DeleteObject permission must be visible in logs instead of
+ * silently leaking orphaned objects.
+ */
+function deleteImageQuietly(key: string): Promise<void> {
+  return getStorage()
+    .delete(key)
+    .catch((err) => {
+      console.warn("[solution] failed to delete stored image:", err);
+    });
 }
 
 /** Abuse-counter key for photos rejected by the content filter ("not a task"). */
@@ -90,19 +105,36 @@ function mapProviderError(err: AIProviderError): SolutionError {
   return new SolutionError(err.message, "AI_ERROR");
 }
 
+/** Map any thrown value from the AI loop into a SolutionError the client understands. */
+function toSolutionError(err: unknown): SolutionError {
+  if (err instanceof SolutionError) return err;
+  if (err instanceof AIProviderError) return mapProviderError(err);
+  return new SolutionError("AI_ERROR", "AI_ERROR");
+}
+
 /**
- * The full solve pipeline. The credits are deducted ONLY for the tasks the AI
- * succeeded on, atomically with the solution creation:
- *   - an AI error never costs a credit,
- *   - failed tasks are skipped (and reported back, not charged),
- *   - double-charging is impossible (atomic balance check + deduct).
+ * Provider throttling (NanoGPT enforces a global 25 req/s) is temporary: the
+ * job is paid-for user work, so instead of failing it we requeue with backoff.
+ * Returns the delay until the next attempt in ms, or null when this failure
+ * should not be retried (content errors, validation, etc).
  */
-export async function createSolution(input: CreateSolutionInput): Promise<{
-  solutions: SolutionDetail[];
-  balance: number;
-  /** Task labels the AI failed to solve — never charged. */
-  failedTaskNumbers: string[];
-}> {
+function requeueDelayMs(err: unknown, attempts: number): number | null {
+  if (!(err instanceof AIProviderError)) return null;
+  const transient = err.status === 429 || err.status === 503 || err.kind === "timeout";
+  if (!transient) return null;
+  const base = err.retryAfterMs ?? attempts * 5_000;
+  const capped = Math.min(base, config.jobs.rateLimitMaxDelayMs);
+  // ±50% jitter so a throttled wave does not retry in lockstep.
+  return Math.round(capped * (0.5 + Math.random()));
+}
+
+/**
+ * Enqueue a solve request and return immediately with a job id.
+ * The actual AI work + credit deduction happens in a background worker
+ * (see lib/server/job-worker), so the HTTP request is never held open for
+ * the duration of the AI call. The client polls GET /api/solutions/status.
+ */
+export async function createSolutionJob(input: CreateSolutionInput): Promise<{ jobId: string }> {
   // Content-filter abuse guard: a user who keeps sending non-task photos is
   // paused before we spend storage + another (free but billable) AI call.
   const blockedFor = strikeRetryAfterSec(nonTaskKey(input.userId), config.limits.nonTaskLimit);
@@ -114,9 +146,8 @@ export async function createSolution(input: CreateSolutionInput): Promise<{
     );
   }
 
-  const provider = getAIProvider();
-
-  // 1. Store the image. If anything below fails we clean it up.
+  // 1. Store the image up-front so the worker does not need the raw upload
+  //    body (and so the request can return before the AI even starts).
   let storedKey: string | null = null;
   let imageUrl: string;
   try {
@@ -132,19 +163,103 @@ export async function createSolution(input: CreateSolutionInput): Promise<{
   }
 
   try {
-    // 2. Call the AI once per chosen task (whole photo when no labels given).
-    const tasks: (string | null)[] =
-      input.taskNumbers && input.taskNumbers.length > 0 ? input.taskNumbers : [null];
+    // 2. Enqueue the job. The worker will pick it up and run the AI.
+    const taskNumbers: string[] | null =
+      input.taskNumbers && input.taskNumbers.length > 0 ? input.taskNumbers : null;
 
-    const attempts: SolveAttempt[] = [];
-    const failedTaskNumbers: string[] = [];
-    let firstFailure: unknown = null;
+    const row = await prisma.solutionJob.create({
+      data: {
+        userId: input.userId,
+        status: "queued",
+        mode: input.mode,
+        // nullable Json column: SQL NULL via Prisma.DbNull (plain null is not accepted)
+        taskNumbers: taskNumbers ?? Prisma.DbNull,
+        imageKey: storedKey!,
+        imageUrl,
+        attempts: 0,
+      },
+      select: { id: true },
+    });
+
+    return { jobId: row.id };
+  } catch (err) {
+    console.error("[solution] enqueue failed:", err);
+    // Do not leak an orphaned image when the job row could not be created.
+    await deleteImageQuietly(storedKey);
+    throw new SolutionError("AI_ERROR", "AI_ERROR");
+  }
+}
+
+/**
+ * Process a single queued job: claim it atomically, run the AI for each chosen
+ * task, save solutions + deduct credits in one transaction and mark the job done.
+ */
+export async function processSolutionJob(jobId: string): Promise<void> {
+  const claimed = await prisma.solutionJob.updateMany({
+    where: { id: jobId, status: "queued" },
+    data: { status: "processing", attempts: { increment: 1 }, startedAt: new Date() },
+  });
+  if (claimed.count === 0) return; // already claimed or gone — do not process twice
+
+  const job = await prisma.solutionJob.findUnique({ where: { id: jobId } });
+  if (!job) return;
+
+  // Retry budget exhausted (throttle requeues or repeated crash-reclaims) —
+  // fail the job instead of spinning forever against the provider.
+  if (job.attempts > config.jobs.maxAttempts) {
+    await prisma.solutionJob.update({
+      where: { id: jobId },
+      data: {
+        status: "error",
+        errorCode: "AI_ERROR",
+        errorMessage:
+          "Сервис временно перегружен. Попробуйте отправить фото через несколько минут.",
+        finishedAt: new Date(),
+      },
+    });
+    await deleteImageQuietly(job.imageKey);
+    return;
+  }
+
+  const tasks: (string | null)[] =
+    Array.isArray(job.taskNumbers as unknown) && (job.taskNumbers as string[]).length > 0
+      ? (job.taskNumbers as string[])
+      : [null];
+  const mode = job.mode as ExplanationMode;
+  const provider = getAIProvider();
+
+  const attempts: SolveAttempt[] = [];
+  const failedTaskNumbers: string[] = [];
+  let firstFailure: unknown = null;
+  // True once the save+deduct transaction committed — after that the stored
+  // image is referenced by Solution rows and must never be deleted.
+  let solutionsCommitted = false;
+
+  try {
+    // 1. Read the stored image once, then call the AI per chosen task.
+    let image: { data: Buffer; mimeType: string } | null = null;
+    try {
+      const stored = await getStorage().read(job.imageKey);
+      image = { data: stored.data, mimeType: stored.mimeType };
+    } catch (err) {
+      console.error("[solution] read stored image failed:", err);
+      await prisma.solutionJob.update({
+        where: { id: jobId },
+        data: {
+          status: "error",
+          errorCode: "AI_ERROR",
+          errorMessage: "Не удалось прочитать изображение. Попробуйте ещё раз.",
+        },
+      });
+      await deleteImageQuietly(job.imageKey);
+      return;
+    }
 
     for (const taskNumber of tasks) {
       try {
         const { result, usage } = await provider.solveProblem({
-          image: { data: input.imageData, mimeType: input.mimeType },
-          mode: input.mode,
+          image,
+          mode,
           taskNumber,
         });
         attempts.push({ taskNumber, result, usage });
@@ -154,27 +269,54 @@ export async function createSolution(input: CreateSolutionInput): Promise<{
       }
     }
 
-    // Nothing solved → surface the first failure so the user sees a reason.
+    // Nothing solved → record the failure on the job (no credit deduction)
+    // and clean up the stored image, mirroring the old synchronous behaviour.
     if (attempts.length === 0) {
-      const failure =
-        firstFailure instanceof SolutionError
-          ? firstFailure
-          : firstFailure instanceof AIProviderError
-            ? mapProviderError(firstFailure)
-            : new SolutionError("AI_ERROR", "AI_ERROR");
-      // Chronic "not a task" spam is eventually blocked up-front (see guard
-      // above); here we only record the strike for this rejection.
-      if (failure.code === "NOT_A_TASK") {
-        addStrike(nonTaskKey(input.userId), config.limits.nonTaskWindowMs);
+      const failure = toSolutionError(firstFailure);
+
+      // Transient provider failure (429/503/timeout): requeue with backoff,
+      // keeping the stored image for the retry.
+      const delayMs = requeueDelayMs(firstFailure, job.attempts);
+      if (delayMs !== null && job.attempts < config.jobs.maxAttempts) {
+        await prisma.solutionJob.update({
+          where: { id: jobId },
+          data: {
+            status: "queued",
+            startedAt: null,
+            runAfterAt: new Date(Date.now() + delayMs),
+          },
+        });
+        console.warn(
+          `[solution] job ${jobId} throttled (${(firstFailure as AIProviderError).status ?? "timeout"})` +
+            ` — retry in ${delayMs}ms (attempt ${job.attempts}/${config.jobs.maxAttempts})`,
+        );
+        return;
       }
-      throw failure;
+
+      if (failure.code === "NOT_A_TASK") {
+        addStrike(nonTaskKey(job.userId), config.limits.nonTaskWindowMs);
+      }
+      await prisma.solutionJob.update({
+        where: { id: jobId },
+        data: {
+          status: "error",
+          errorCode: failure.code,
+          // Budget exhausted on a transient failure → friendly overload text.
+          errorMessage:
+            delayMs !== null
+              ? "Сервис временно перегружен. Попробуйте отправить фото через несколько минут."
+              : failure.message,
+        },
+      });
+      await deleteImageQuietly(job.imageKey);
+      return;
     }
 
-    // 3. Save every solved task + deduct credits atomically.
+    // 2. Save every solved task + deduct credits atomically.
     const outcome = await prisma.$transaction(async (tx) => {
       const count = attempts.length;
       const spent = await tx.user.updateMany({
-        where: { id: input.userId, balance: { gte: count * CREDIT_COST_PER_SOLUTION } },
+        where: { id: job.userId, balance: { gte: count * CREDIT_COST_PER_SOLUTION } },
         data: { balance: { decrement: count * CREDIT_COST_PER_SOLUTION } },
       });
       if (spent.count === 0) {
@@ -185,13 +327,13 @@ export async function createSolution(input: CreateSolutionInput): Promise<{
       for (const a of attempts) {
         const row = await tx.solution.create({
           data: {
-            userId: input.userId,
-            imageUrl,
+            userId: job.userId,
+            imageUrl: job.imageUrl,
             subject: a.result.subject,
             recognizedProblem: a.result.recognizedProblem,
             answer: a.result.answer,
             steps: a.result.steps as unknown as Prisma.InputJsonValue,
-            explanationMode: input.mode,
+            explanationMode: mode,
             provider: a.usage.provider,
             model: a.usage.model,
             inputTokens: a.usage.inputTokens,
@@ -206,12 +348,12 @@ export async function createSolution(input: CreateSolutionInput): Promise<{
       }
 
       const balanceAfter = await tx.user.findUnique({
-        where: { id: input.userId },
+        where: { id: job.userId },
         select: { balance: true },
       });
 
       await recordBalanceTx(tx, {
-        userId: input.userId,
+        userId: job.userId,
         type: "solution",
         amount: -count * CREDIT_COST_PER_SOLUTION,
         balanceAfter: balanceAfter?.balance ?? 0,
@@ -222,20 +364,91 @@ export async function createSolution(input: CreateSolutionInput): Promise<{
       return { created, balance: balanceAfter?.balance ?? 0 };
     });
 
-    return {
-      solutions: outcome.created.map(toDetail),
-      balance: outcome.balance,
-      failedTaskNumbers,
-    };
+    // 3. Mark done with result payload for the status endpoint.
+    solutionsCommitted = true;
+    await prisma.solutionJob.update({
+      where: { id: jobId },
+      data: {
+        status: "done",
+        solutionIds: outcome.created.map((s) => s.id),
+        failedTaskNumbers,
+        finishedAt: new Date(),
+      },
+    });
   } catch (err) {
-    // AI failed — never deduct a credit. Clean up stored image to avoid orphans.
-    if (storedKey) {
-      await getStorage().delete(storedKey).catch(() => {});
+    // Job-level unexpected failure (transaction error etc). Never charged without
+    // a record; the image is cleaned up unless solutions already reference it.
+    const failure = toSolutionError(err);
+    console.error("[solution] job failed:", err);
+    await prisma.solutionJob
+      .update({
+        where: { id: jobId },
+        data: {
+          status: "error",
+          errorCode: failure.code,
+          errorMessage: failure.message,
+          finishedAt: new Date(),
+        },
+      })
+      .catch(() => {});
+    if (!solutionsCommitted) {
+      await deleteImageQuietly(job.imageKey);
     }
-    if (err instanceof SolutionError) throw err;
-    if (err instanceof AIProviderError) throw mapProviderError(err);
-    throw new SolutionError("AI_ERROR", "AI_ERROR");
   }
+}
+
+/** Read a job's status as exposed to the client. Returns null if not found/not owned. */
+export async function getSolutionJobStatus(
+  userId: string,
+  jobId: string,
+): Promise<SolutionJobDto | null> {
+  const row = await prisma.solutionJob.findFirst({
+    where: { id: jobId, userId },
+    select: {
+      id: true,
+      status: true,
+      solutionIds: true,
+      failedTaskNumbers: true,
+      errorCode: true,
+      errorMessage: true,
+      createdAt: true,
+    },
+  });
+  if (!row) return null;
+
+  // Live queue snapshot. The worker claims jobs FIFO by createdAt, so the
+  // user's position is the number of live jobs created before theirs + 1.
+  let queuePosition: number | null = null;
+  let queueSize = 0;
+  if (row.status === "queued" || row.status === "processing") {
+    const [ahead, total] = await Promise.all([
+      prisma.solutionJob.count({
+        where: {
+          status: { in: ["queued", "processing"] },
+          createdAt: { lt: row.createdAt },
+        },
+      }),
+      prisma.solutionJob.count({
+        where: { status: { in: ["queued", "processing"] } },
+      }),
+    ]);
+    queueSize = total;
+    // "processing" means the job already occupies a worker slot — no waiting.
+    queuePosition = row.status === "queued" ? ahead + 1 : null;
+  }
+
+  return {
+    id: row.id,
+    status: row.status as SolutionJobStatus,
+    solutionIds: Array.isArray(row.solutionIds) ? (row.solutionIds as string[]) : [],
+    failedTaskNumbers: Array.isArray(row.failedTaskNumbers)
+      ? (row.failedTaskNumbers as string[])
+      : [],
+    errorCode: row.errorCode,
+    errorMessage: row.errorMessage,
+    queuePosition,
+    queueSize,
+  };
 }
 
 /** Detect task labels on a photo. Best-effort + free — failures never block solving. */
@@ -289,6 +502,7 @@ export async function getSolution(
       explanationMode: true,
       provider: true,
       model: true,
+      estimatedCost: true,
       confidence: true,
       createdAt: true,
     },
@@ -309,6 +523,7 @@ interface SolutionRow {
   explanationMode?: string | null;
   model?: string | null;
   provider?: string | null;
+  estimatedCost?: number | null;
 }
 
 function toSummary(row: SolutionRow): SolutionSummary {
@@ -327,11 +542,10 @@ function toDetail(row: SolutionRow): SolutionDetail {
   return {
     ...base,
     imageUrl: row.imageUrl ?? "",
-    steps: Array.isArray(row.steps)
-      ? (row.steps as unknown as SolutionDetail["steps"])
-      : [],
+    steps: Array.isArray(row.steps) ? (row.steps as unknown as SolutionDetail["steps"]) : [],
     explanationMode: row.explanationMode ?? null,
     model: row.model ?? null,
     provider: row.provider ?? null,
+    estimatedCost: row.estimatedCost ?? null,
   };
 }

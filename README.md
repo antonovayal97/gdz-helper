@@ -8,10 +8,10 @@ Production-ready MVP: пользователь открывает Mini App, фо
 
 - 📷 фотографирование / 📁 загрузка фото из галереи
 - 🔍 экран подтверждения с режимом объяснения
-- ⏳ красивый экран загрузки с этапами
+- ⏳ красивый экран загрузки с этапами и позицией в очереди ("вы 4 из 50")
 - ✅ экран результата с формулами (KaTeX), копированием ответа/решения
 - 🕘 история решений
-- ⚖️ баланс и пакеты решений
+- ⚖️ баланс и пополнение на произвольную сумму (1 ⚡ = 1,5 ₽)
 - 💳 mock-платёжный провайдер + подготовка к Telegram Stars
 - 🎁 реферальная программа
 - 🧭 онбординг — показывается один раз новым пользователям (отметка хранится в БД)
@@ -45,8 +45,7 @@ app/                  # маршруты и API
 │   ├── me            # GET — текущий пользователь
 │   ├── solutions     # GET/POST — список/создание
 │   ├── solutions/[id]# GET — деталь решения
-│   ├── balance       # GET — баланс
-│   ├── packages      # GET — пакеты (цены из БД)
+│   ├── balance       # GET — баланс + цена пополнения
 │   ├── payments/
 │   │   ├── create    # POST — создать платёж
 │   │   └── webhook   # POST — статус оплаты
@@ -54,7 +53,7 @@ app/                  # маршруты и API
 │   └── files/[...path] # раздача локальных файлов
 ├── result/[id]        # экран результата
 ├── history/           # история решений
-├── balance/           # баланс и пакеты
+├── balance/           # баланс и пополнение
 layout.tsx, globals.css
 components/            # React UI
 lib/
@@ -114,13 +113,44 @@ cp .env.example .env
 | `AI_RETRIES`             | повторные попытки при сетевой ошибке (по умолчанию `2`) — защита от временных сбоев сети          |
 | `AI_RETRY_DELAY_MS`      | базовая задержка между повторами в мс (по умолчанию `1000`, растёт линейно: 1с, 2с, …)            |
 | `AI_CHEAP_MODE`          | `true` (по умолчанию) — режим «только ответ» использует дешёвую модель; `false` — всегда основная |
+| `JOBS_WORKER_ENABLED`    | `true` (по умолчанию) — фоновый воркер очереди решений запущен в этом же процессе               |
+| `JOBS_CONCURRENCY`       | сколько решений выполняется параллельно у AI-провайдера (по умолчанию `30`)                      |
+| `JOBS_POLL_INTERVAL_MS`  | как часто воркер выбирает новые задачи из очереди (по умолчанию `2000`)                          |
+| `JOBS_MAX_ATTEMPTS`      | потолок обработок одного job (в т.ч. после requeue по 429/503/таймауту), по умолчанию `5`        |
+| `JOBS_RATE_LIMIT_MAX_DELAY_MS` | максимум паузы до повтора затроттленного job (по умолчанию `600000`)                       |
+| `JOBS_STALE_AFTER_MS`    | через сколько job в «processing» считается брошенным (краш) и возвращается в очередь (по умолчанию 15 мин) |
+| `JOBS_DETECT_CONCURRENCY`| сколько синхронных detect-вызовов может идти одновременно (по умолчанию `8`; сверх — быстрый 429, клиент решает всё фото) |
 | `APP_URL`                | публичный URL приложения                                                                          |
-| `STORAGE_PROVIDER`       | `local` (dev) \| `s3` (future)                                                                    |
+| `STORAGE_PROVIDER`       | `local` (dev) \| `s3` (S3-совместимое хранилище: AWS S3, Cloudflare R2, MinIO, Fil One)             |
+| `STORAGE_ENDPOINT`       | endpoint S3 (например, `https://s3.eu-west-1.filonecontent.com` для Fil One)                        |
+| `STORAGE_ACCESS_KEY`     | access key S3                                                                                      |
+| `STORAGE_SECRET_KEY`     | secret key S3                                                                                      |
+| `STORAGE_BUCKET`         | имя bucket                                                                                        |
+| `STORAGE_REGION`         | регион bucket (по умолчанию `us-east-1`)                                                          |
 | `PAYMENT_PROVIDER`       | `mock` (сейчас) \| `telegram-stars`                                                               |
 | `ALLOW_MOCK_PAYMENTS`    | разрешить mock-оплату (только dev)                                                                |
 
 > ⚠️ Никогда не коммить реальные секреты. `.env` в `.gitignore`.
 > ⚠️ `ALLOW_MOCK_PAYMENTS` принудительно выключен в production (`NODE_ENV=production`).
+
+#### Хранилище изображений на Fil One (S3)
+
+[S3-хранилище Fil One](https://app.fil.one) совместимо с AWS S3 API. Buckets приватные, поэтому
+файлы отдаются через прокси-роут `/api/files/[...path]` (урл не истекает).
+
+Пример конфигурации `.env`:
+
+```bash
+STORAGE_PROVIDER=s3
+STORAGE_ENDPOINT=https://s3.eu-west-1.filonecontent.com  # замени на свой регион
+STORAGE_ACCESS_KEY=твой_access_key
+STORAGE_SECRET_KEY=твой_secret_key
+STORAGE_BUCKET=имя_твоего_bucket
+STORAGE_REGION=eu-west-1
+```
+
+> Конфигурация в `app.fil.one`: создай bucket, затем access key, скоупированный на регион bucket.
+> Restart dev-сервера после изменения переменных.
 
 ## 6. Запуск PostgreSQL
 
@@ -150,7 +180,6 @@ createdb gdz
 
 ```bash
 npx prisma migrate dev --name init   # создаёт таблицы из schema.prisma
-npx prisma db seed                   # добавляет пакеты решений
 ```
 
 Только для продакшена (без dev-интерактива):
@@ -235,7 +264,6 @@ npm run typecheck    # tsc --noEmit
 npm run format       # Prettier
 npx prisma migrate dev   # создать/применить миграцию
 npx prisma studio        # GUI для БД
-npx prisma db seed       # наполнение (пакеты)
 ```
 
 ## 15. Архитектурные решения

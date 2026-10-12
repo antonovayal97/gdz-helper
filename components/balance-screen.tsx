@@ -2,21 +2,28 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Wallet, Gift, Check, Loader2, Receipt } from "lucide-react";
+import { Wallet, Gift, Check, Loader2, Receipt, Zap } from "lucide-react";
 import { Card, SectionTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/components/auth-context";
 import { useToast } from "@/components/toast-context";
 import { apiFetch } from "@/lib/client/api";
-import { formatCredits } from "@/components/helpers";
+import { currencySymbol, formatPrice } from "@/components/helpers";
 import { BalanceTxRow } from "@/components/balance-tx-row";
-import type { BalanceTransactionDto, CreditPackageDto } from "@/types";
+import type { BalanceTransactionDto } from "@/types";
 
 interface ReferralDto {
   code: string;
   link: string;
   referralCount: number;
   totalReward: number;
+}
+
+interface TopupCfg {
+  creditPrice: number;
+  currency: string;
+  minCredits: number;
+  maxCredits: number;
 }
 
 interface CreatePaymentResponse {
@@ -30,9 +37,10 @@ const LAST_TX_PREVIEW = 3;
 export function BalanceScreen() {
   const { user, getBalance, refresh } = useAuth();
   const toast = useToast();
-  const [packages, setPackages] = useState<CreditPackageDto[] | null>(null);
+  const [topup, setTopup] = useState<TopupCfg | null>(null);
+  const [creditsInput, setCreditsInput] = useState("");
   const [referral, setReferral] = useState<ReferralDto | null>(null);
-  const [creating, setCreating] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const [pendingPayment, setPendingPayment] = useState<CreatePaymentResponse | null>(null);
   const [transactions, setTransactions] = useState<BalanceTransactionDto[] | null>(null);
 
@@ -43,33 +51,38 @@ export function BalanceScreen() {
   }, []);
 
   useEffect(() => {
-    apiFetch<{ packages: CreditPackageDto[] }>("/api/packages")
-      .then((res) => setPackages(res.packages))
-      .catch(() => setPackages([]));
+    apiFetch<{ topup: TopupCfg }>("/api/balance")
+      .then((res) => setTopup(res.topup))
+      .catch(() => setTopup(null));
     apiFetch<{ referral: ReferralDto }>("/api/referral")
       .then((res) => setReferral(res.referral))
       .catch(() => setReferral(null));
     loadHistory();
   }, [loadHistory]);
 
-  const buy = useCallback(
-    async (pkg: CreditPackageDto) => {
-      setCreating(pkg.id);
-      try {
-        const res = await apiFetch<CreatePaymentResponse>("/api/payments/create", {
-          method: "POST",
-          json: { packageId: pkg.id },
-        });
-        setPendingPayment(res);
-        toast.info("Заказ создан. Оплати (демо-режим).");
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Не удалось начать оплату");
-      } finally {
-        setCreating(null);
-      }
-    },
-    [toast],
-  );
+  const credits = Math.floor(Number(creditsInput)) || 0;
+  const withinLimits = topup !== null && credits >= topup.minCredits && credits <= topup.maxCredits;
+  const total = topup ? Math.round(credits * topup.creditPrice * 100) / 100 : 0;
+
+  const topUp = useCallback(async () => {
+    if (!topup || !withinLimits) {
+      toast.error("Некорректное количество ⚡");
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await apiFetch<CreatePaymentResponse>("/api/payments/create", {
+        method: "POST",
+        json: { credits },
+      });
+      setPendingPayment(res);
+      toast.info(`Заказ на ${credits} ⚡ создан. Оплати (демо-режим).`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Не удалось начать оплату");
+    } finally {
+      setCreating(false);
+    }
+  }, [topup, withinLimits, credits, toast]);
 
   const completeMockPayment = useCallback(async () => {
     if (!pendingPayment) return;
@@ -109,10 +122,67 @@ export function BalanceScreen() {
       <Card className="flex flex-col items-center gap-2 p-6 text-center">
         <p className="text-sm text-hint">Ваш баланс</p>
         <p className="text-5xl font-extrabold tracking-tight">
-          {user ? user.balance : "…"}
+          {user ? (
+            <>
+              {user.balance} <span className="relative bottom-1.25 text-[2rem]">⚡</span>
+            </>
+          ) : (
+            "…"
+          )}
         </p>
-        <p className="text-sm text-hint">{user ? formatCredits(user.balance) : ""}</p>
       </Card>
+
+      {/* Custom balance top-up */}
+      <div>
+        <SectionTitle>Пополнить баланс</SectionTitle>
+        <Card className="space-y-4 p-5">
+          {topup === null ? (
+            <div className="skeleton h-32 w-full" />
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-3">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    aria-label="Количество ⚡ для пополнения"
+                    placeholder="Сколько ⚡ нужно?"
+                    value={creditsInput}
+                    onChange={(e) => setCreditsInput(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    className="w-full rounded-2xl border border-border bg-background px-4 py-3 pr-10 text-[15px] font-semibold text-foreground outline-none transition-colors placeholder:font-normal placeholder:text-hint focus:border-link"
+                  />
+                  <Zap
+                    className="pointer-events-none absolute right-3.5 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-accent"
+                    fill="currentColor"
+                    strokeWidth={0}
+                  />
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-lg font-extrabold leading-tight tracking-tight">
+                    {total > 0 ? formatPrice(total, topup.currency) : "—"}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-hint">
+                    {topup.creditPrice} {currencySymbol(topup.currency)} за ⚡
+                  </p>
+                </div>
+              </div>
+
+              <Button
+                size="lg"
+                className="w-full"
+                loading={creating}
+                disabled={creating || !withinLimits}
+                onClick={topUp}
+              >
+                {creating
+                  ? "Создаём…"
+                  : `Пополнить${total > 0 ? ` за ${formatPrice(total, topup.currency)}` : ""}`}
+              </Button>
+            </>
+          )}
+        </Card>
+      </div>
 
       <div>
         <SectionTitle>Последние операции</SectionTitle>
@@ -140,58 +210,11 @@ export function BalanceScreen() {
         )}
       </div>
 
-      {/* Packages */}
-      <div>
-        <SectionTitle>Пакеты решений</SectionTitle>
-        {packages === null ? (
-          <div className="space-y-3">
-            <div className="skeleton h-20 w-full" />
-            <div className="skeleton h-20 w-full" />
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {packages.map((pkg) => {
-              const best = pkg.credits >= 100;
-              return (
-                <Card key={pkg.id} className={`p-4 ${best ? "border-accent" : ""}`}>
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-[15px] font-bold">
-                        {formatCredits(pkg.credits)}
-                      </p>
-                      <p className="text-sm text-hint">{pkg.name}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-lg font-extrabold">
-                        {pkg.price} {pkg.currency}
-                      </p>
-                      <p className="text-xs text-hint">
-                        ≈ {(pkg.price / pkg.credits).toFixed(1)} / шт
-                      </p>
-                    </div>
-                  </div>
-                  {creating === pkg.id ? (
-                    <Button className="mt-3 w-full" loading disabled>
-                      Создаём…
-                    </Button>
-                  ) : (
-                    <Button className="mt-3 w-full" onClick={() => buy(pkg)}>
-                      + Пополнить
-                    </Button>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
       {/* Mock payment note */}
       {pendingPayment && (
         <Card className="flex flex-col items-center gap-3 p-5 text-center">
           <p className="text-sm text-hint">
-            Демо-оплата: {pendingPayment.payment.amount}{" "}
-            {pendingPayment.payment.currency}
+            Демо-оплата: {pendingPayment.payment.amount} {pendingPayment.payment.currency}
           </p>
           <Button size="lg" className="w-full" onClick={completeMockPayment}>
             <Check className="h-5 w-5" />

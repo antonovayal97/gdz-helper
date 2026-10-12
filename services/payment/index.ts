@@ -1,4 +1,3 @@
-import type { CreditPackage } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { config } from "@/config";
 import { PaymentProvider } from "./provider";
@@ -6,7 +5,10 @@ import { MockPaymentProvider } from "./mock";
 import { recordBalanceTx } from "@/services/balance";
 
 export class PaymentError extends Error {
-  constructor(message: string, public readonly code = "PAYMENT_ERROR") {
+  constructor(
+    message: string,
+    public readonly code = "PAYMENT_ERROR",
+  ) {
     super(message);
     this.name = "PaymentError";
   }
@@ -37,30 +39,31 @@ export interface CreatedPayment {
   providerPaymentId: string;
 }
 
-export async function listActivePackages(): Promise<CreditPackage[]> {
-  return prisma.creditPackage.findMany({
-    where: { active: true },
-    orderBy: { credits: "asc" },
-  });
-}
-
 /**
- * Create a pending Payment for a package.
- * IMPORTANT: amount/prices are read from the DATABASE (CreditPackage),
- * never taken from the frontend request.
+ * Create a pending Payment for a custom balance top-up.
+ * IMPORTANT: the granted credits and the price are validated/computed on the
+ * server (config.payments.creditPrice), never taken from the frontend.
  */
-export async function createPayment(userId: string, packageId: string): Promise<CreatedPayment> {
-  const pkg = await prisma.creditPackage.findUnique({ where: { id: packageId } });
-  if (!pkg || !pkg.active) {
-    throw new PaymentError("Пакет не найден", "NOT_FOUND");
+export async function createPayment(userId: string, credits: number): Promise<CreatedPayment> {
+  if (
+    !Number.isInteger(credits) ||
+    credits < config.payments.minTopupCredits ||
+    credits > config.payments.maxTopupCredits
+  ) {
+    throw new PaymentError(
+      `Укажите от ${config.payments.minTopupCredits} до ${config.payments.maxTopupCredits} ⚡`,
+      "INVALID_AMOUNT",
+    );
   }
+
+  const amount = Math.round(credits * config.payments.creditPrice * 100) / 100;
 
   const payment = await prisma.payment.create({
     data: {
       userId,
-      packageId: pkg.id,
-      amount: pkg.price,
-      currency: pkg.currency,
+      credits,
+      amount,
+      currency: config.payments.currency,
       status: "pending",
     },
   });
@@ -68,7 +71,9 @@ export async function createPayment(userId: string, packageId: string): Promise<
   const { providerPaymentId } = await getPaymentProvider().initiatePayment({
     userId,
     paymentId: payment.id,
-    package: pkg,
+    amount,
+    currency: config.payments.currency,
+    credits,
   });
 
   await prisma.payment.update({
@@ -99,24 +104,32 @@ export async function completePayment(paymentId: string): Promise<{ credits: num
       return { credits: 0 };
     }
 
-    const pkg = await tx.creditPackage.findUnique({ where: { id: payment.packageId } });
-    if (!pkg) throw new PaymentError("Пакет не найден", "NOT_FOUND");
+    // New top-ups store the granted credits on the payment itself; legacy
+    // package payments fall back to the linked CreditPackage row.
+    let credits = payment.credits;
+    if (credits == null) {
+      const pkg = payment.packageId
+        ? await tx.creditPackage.findUnique({ where: { id: payment.packageId } })
+        : null;
+      if (!pkg) throw new PaymentError("Платёж некорректен", "INVALID_PAYMENT");
+      credits = pkg.credits;
+    }
 
     await tx.payment.update({
       where: { id: paymentId },
-      data: { status: "paid" },
+      data: { status: "paid", credits },
     });
 
     const credited = await tx.user.update({
       where: { id: payment.userId },
-      data: { balance: { increment: pkg.credits } },
+      data: { balance: { increment: credits } },
     });
     await recordBalanceTx(tx, {
       userId: payment.userId,
       type: "payment",
-      amount: pkg.credits,
+      amount: credits,
       balanceAfter: credited.balance,
-      description: `Пополнение: ${pkg.name}`,
+      description: `Пополнение баланса: ${credits} ⚡`,
       refId: payment.id,
     });
 
@@ -152,6 +165,6 @@ export async function completePayment(paymentId: string): Promise<{ credits: num
       }
     }
 
-    return { credits: pkg.credits };
+    return { credits };
   });
 }

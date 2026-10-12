@@ -6,7 +6,16 @@ import type {
   SolveProblemRequest,
   SolveProblemResult,
 } from "@/types";
+import { calculateAiCost } from "@/config/ai-models";
 import { AIProvider, AIProviderError } from "./provider";
+
+/**
+ * Mock costs are computed through the real pricing table so the numbers
+ * shown in the UI match what the configured models would actually charge.
+ * "answer"-style short replies are priced like the cheap model.
+ */
+const MOCK_MAIN_MODEL = "qwen/qwen3-vl-235b-a22b-instruct";
+const MOCK_CHEAP_MODEL = "google/gemini-2.5-flash-lite";
 
 /**
  * Mock AI provider — used for local development when no AI key is configured.
@@ -73,7 +82,7 @@ export class MockAIProvider implements AIProvider {
       model: this.model,
       inputTokens: 1200,
       outputTokens: 240,
-      estimatedCost: 0.0006,
+      estimatedCost: calculateAiCost(MOCK_MAIN_MODEL, 1200, 240),
       latencyMs: Date.now() - started,
       status: "ok",
     };
@@ -108,7 +117,7 @@ export class MockAIProvider implements AIProvider {
       model: this.model,
       inputTokens,
       outputTokens,
-      estimatedCost: 0.0004,
+      estimatedCost: calculateAiCost(MOCK_CHEAP_MODEL, inputTokens, outputTokens),
       latencyMs: Date.now() - started,
       status: "ok",
     };

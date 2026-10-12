@@ -15,6 +15,18 @@ function imageToDataUrl(data: Buffer, mimeType: string): string {
   return `data:${mimeType};base64,${data.toString("base64")}`;
 }
 
+/**
+ * Providers that meter billing per request (ai.bitcoin.com / nano-gpt,
+ * OpenRouter) return the exact charged amount in `usage.cost` (USD).
+ * Prefer it over the table estimate: it accounts for cache reads, image
+ * tokens and the actual upstream provider behind the model slug.
+ */
+function reportedUsageCost(usage?: { cost?: number | string | null }): number | null {
+  if (usage?.cost == null) return null;
+  const n = typeof usage.cost === "number" ? usage.cost : Number(usage.cost);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
 export interface OpenAICompatibleProviderOptions {
   /** Provider slug used in the DB and error messages, e.g. "openrouter", "bitcoincom". */
   name: string;
@@ -175,6 +187,7 @@ export class OpenAICompatibleProvider implements AIProvider {
         `${this.name} HTTP ${response.status}: ${text.slice(0, 300)}`,
         "http",
         response.status,
+        parseRetryAfterMs(response.headers.get("retry-after")),
       );
     }
 
@@ -186,7 +199,7 @@ export class OpenAICompatibleProvider implements AIProvider {
 
     let data: {
       choices?: { message?: { content?: string }; finish_reason?: string }[];
-      usage?: { prompt_tokens?: number; completion_tokens?: number };
+      usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number | string | null };
     };
     try {
       data = await response.json();
@@ -243,10 +256,13 @@ export class OpenAICompatibleProvider implements AIProvider {
 
     const inputTokens = data.usage?.prompt_tokens ?? null;
     const outputTokens = data.usage?.completion_tokens ?? null;
+    // Exact provider-reported cost when present (nano-gpt meters every
+    // request); fall back to the pricing table estimate.
     const estimatedCost =
-      inputTokens != null && outputTokens != null
+      reportedUsageCost(data.usage) ??
+      (inputTokens != null && outputTokens != null
         ? calculateAiCost(model, inputTokens, outputTokens)
-        : null;
+        : null);
 
     const usage: AiUsage = {
       provider: this.name,
@@ -359,6 +375,7 @@ export class OpenAICompatibleProvider implements AIProvider {
         `${this.name} detection HTTP ${response.status}: ${text.slice(0, 300)}`,
         "http",
         response.status,
+        parseRetryAfterMs(response.headers.get("retry-after")),
       );
     }
 
@@ -391,9 +408,10 @@ export class OpenAICompatibleProvider implements AIProvider {
     const inputTokens = data?.usage?.prompt_tokens ?? null;
     const outputTokens = data?.usage?.completion_tokens ?? null;
     const estimatedCost =
-      inputTokens != null && outputTokens != null
+      reportedUsageCost(data?.usage) ??
+      (inputTokens != null && outputTokens != null
         ? calculateAiCost(model, inputTokens, outputTokens)
-        : null;
+        : null);
 
     const usage: AiUsage = {
       provider: this.name,
@@ -407,6 +425,21 @@ export class OpenAICompatibleProvider implements AIProvider {
 
     return { numbers, usage };
   }
+}
+
+/**
+ * Parse the `Retry-After` header into milliseconds. Supports both forms
+ * allowed by RFC 7231: delta-seconds and HTTP-date. Anything unparseable
+ * returns undefined (callers fall back to their own backoff).
+ */
+function parseRetryAfterMs(header: string | null): number | undefined {
+  if (!header) return undefined;
+  const trimmed = header.trim();
+  const secs = Number(trimmed);
+  if (Number.isFinite(secs) && secs >= 0) return Math.round(secs * 1000);
+  const dateMs = Date.parse(trimmed);
+  if (!Number.isNaN(dateMs)) return Math.max(0, Math.round(dateMs - Date.now()));
+  return undefined;
 }
 
 function shouldRetry(err: unknown): boolean {
