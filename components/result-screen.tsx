@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Formula } from "@/components/formula";
+import { Formula, MathText } from "@/components/formula";
 import { useToast } from "@/components/toast-context";
 import { useAuth } from "@/components/auth-context";
 import { AuthScreen } from "@/components/auth-screen";
@@ -287,7 +287,7 @@ export function ResultScreen({ id, batchIds, batchNumbers }: ResultScreenProps) 
           <Card className="mt-4 p-5">
             <p className="text-xs font-semibold uppercase tracking-wide text-hint">Условие</p>
             <p className="mt-2 whitespace-pre-wrap text-[15px] leading-relaxed">
-              {solution.recognizedProblem}
+              <MathText text={solution.recognizedProblem} />
             </p>
           </Card>
 
@@ -296,7 +296,7 @@ export function ResultScreen({ id, batchIds, batchNumbers }: ResultScreenProps) 
             <p className="text-xs font-semibold uppercase tracking-wide text-hint">Ответ</p>
             <div className="mt-2 flex items-start justify-between gap-3">
               <p className="min-w-0 flex-1 break-words text-xl font-extrabold leading-snug text-accent">
-                {solution.answer}
+                <MathText text={solution.answer} />
               </p>
               <Button
                 size="sm"
@@ -325,14 +325,16 @@ export function ResultScreen({ id, batchIds, batchNumbers }: ResultScreenProps) 
                       {i + 1}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[15px] font-bold">{step.title}</p>
+                      <p className="text-[15px] font-bold">
+                        <MathText text={step.title} />
+                      </p>
                       {step.formula ? (
                         <div className="mt-1.5 rounded-xl bg-background px-3 py-2">
                           <Formula text={step.formula} className="text-[15px]" />
                         </div>
                       ) : null}
                       <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
-                        {step.explanation}
+                        <MathText text={step.explanation} />
                       </p>
                     </div>
                   </li>

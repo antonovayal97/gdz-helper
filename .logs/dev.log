@@ -1946,3 +1946,7 @@ Source: local storage / Source is empty
  GET /api/balance/history 200 in 37ms (next.js: 9ms, application-code: 29ms)
  GET /balance 200 in 33ms (next.js: 11ms, application-code: 22ms)
 ✓ Compiled in 131ms
+ GET /balance 200 in 272ms (next.js: 98ms, application-code: 174ms)
+ GET /balance 200 in 42ms (next.js: 5ms, application-code: 37ms)
+ GET /balance 200 in 39ms (next.js: 5ms, application-code: 34ms)
+ GET /balance 200 in 63ms (next.js: 21ms, application-code: 42ms)
