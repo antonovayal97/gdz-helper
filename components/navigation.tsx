@@ -14,8 +14,12 @@ export function BottomNav() {
   const pathname = usePathname();
 
   return (
+    // NOTE: the row must use min-h (not h) because it is border-box: a fixed
+    // h-[64px] minus a ~34px safe-area padding would crush the icons into a
+    // ~30px strip (the "flattened" look on iPhone). min-h keeps the content
+    // row at least 64px and lets the bar grow by the inset instead.
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/90 backdrop-blur-lg">
-      <div className="mx-auto flex h-[64px] max-w-md items-stretch justify-around pb-[env(safe-area-inset-bottom)]">
+      <div className="mx-auto flex min-h-[64px] max-w-md items-stretch justify-around pb-[env(safe-area-inset-bottom)]">
         {items.map((it) => {
           const active = it.href === "/" ? pathname === "/" : pathname.startsWith(it.href);
           return (

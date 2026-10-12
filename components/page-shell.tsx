@@ -34,7 +34,9 @@ export function PageShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="mx-auto min-h-dvh w-full max-w-md">
+    // pt for the status bar: in fullscreen Telegram hands the whole screen
+    // to the webview, so env(safe-area-inset-top) becomes non-zero.
+    <div className="mx-auto min-h-dvh w-full max-w-md pt-[env(safe-area-inset-top)]">
       {children}
       <BottomNav />
     </div>

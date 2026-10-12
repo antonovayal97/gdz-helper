@@ -166,7 +166,10 @@ export function ResultScreen({ id, batchIds, batchNumbers }: ResultScreenProps) 
   const mode = explanationModeLabel(solution.explanationMode);
 
   return (
-    <div className="mx-auto min-h-dvh w-full max-w-md animate-fade-in px-5 pb-16 pt-4">
+    // pt/pb include the safe-area insets because the app runs Telegram in
+    // fullscreen mode (no native header/footer), so the status bar and the
+    // home indicator overlap the webview.
+    <div className="mx-auto min-h-dvh w-full max-w-md animate-fade-in px-5 pb-[calc(4rem+env(safe-area-inset-bottom))] pt-[calc(1rem+env(safe-area-inset-top))]">
       {/* Header */}
       <div className="flex items-center justify-between">
         <button

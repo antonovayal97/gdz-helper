@@ -1905,3 +1905,34 @@ Source: local storage / Source is empty
  GET /api/balance/history 200 in 28ms (next.js: 14ms, application-code: 14ms)
   Reload env: .env
  GET /balance 200 in 531ms (next.js: 394ms, application-code: 137ms)
+ GET /balance 200 in 268ms (next.js: 82ms, application-code: 186ms)
+ GET /balance 200 in 31ms (next.js: 7ms, application-code: 24ms)
+ GET /balance 200 in 26ms (next.js: 4ms, application-code: 22ms)
+✓ Compiled in 618ms
+ GET /balance 200 in 59ms (next.js: 17ms, application-code: 42ms)
+ GET /api/balance 200 in 565ms (next.js: 243ms, application-code: 322ms)
+ GET /api/balance 200 in 252ms (next.js: 5ms, application-code: 247ms)
+ GET /api/balance/history 200 in 260ms (next.js: 169ms, application-code: 90ms)
+ GET /api/referral 200 in 268ms (next.js: 85ms, application-code: 183ms)
+ GET /api/referral 200 in 94ms (next.js: 13ms, application-code: 81ms)
+ GET /api/balance/history 200 in 96ms (next.js: 36ms, application-code: 60ms)
+ GET /api/balance 200 in 45ms (next.js: 7ms, application-code: 38ms)
+ GET /api/balance/history 200 in 45ms (next.js: 18ms, application-code: 28ms)
+ GET /api/balance 200 in 31ms (next.js: 5ms, application-code: 26ms)
+ GET /api/referral 200 in 59ms (next.js: 12ms, application-code: 47ms)
+ GET /api/referral 200 in 36ms (next.js: 9ms, application-code: 27ms)
+ GET /api/balance/history 200 in 33ms (next.js: 16ms, application-code: 17ms)
+ GET /balance 200 in 32ms (next.js: 13ms, application-code: 19ms)
+✓ Compiled in 135ms
+ GET /balance 200 in 26ms (next.js: 5ms, application-code: 21ms)
+ GET /api/balance 200 in 15ms (next.js: 2ms, application-code: 12ms)
+ GET /api/referral 200 in 35ms (next.js: 5ms, application-code: 30ms)
+ GET /api/balance/history 200 in 34ms (next.js: 11ms, application-code: 23ms)
+ GET /api/balance 200 in 32ms (next.js: 10ms, application-code: 22ms)
+ GET /api/referral 200 in 29ms (next.js: 11ms, application-code: 18ms)
+ GET /api/balance/history 200 in 21ms (next.js: 12ms, application-code: 9ms)
+✓ Compiled in 47ms
+ GET /balance 200 in 24ms (next.js: 7ms, application-code: 17ms)
+✓ Compiled in 152ms
+ GET /balance 200 in 27ms (next.js: 6ms, application-code: 21ms)
+✓ Compiled in 260ms

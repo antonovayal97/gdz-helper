@@ -11,6 +11,7 @@ import {
   retrieveLaunchParams,
   themeParams,
   miniApp,
+  viewport,
   backButton,
 } from "@tma.js/sdk";
 
@@ -80,6 +81,38 @@ export function bindTelegramTheme(): (() => void) | undefined {
   }
 }
 
+/**
+ * Ask Telegram to drop its native header/toolbar and let the app own the
+ * whole screen. Requires Mini Apps platform v8.0+; silently skipped on
+ * older clients and outside Telegram.
+ * @returns true if the request was sent.
+ */
+export function requestTelegramFullscreen(): boolean {
+  try {
+    if (!isTmaLib()) return false;
+    viewport.mount();
+    viewport.requestFullscreen().catch((err) => console.warn("[telegram] fullscreen failed", err));
+    return true;
+  } catch (err) {
+    // Unsupported version / fullscreenFailed: { error: "ALREADY_FULLSCREEN" } — harmless.
+    console.warn("[telegram] requestFullscreen skipped", err);
+    return false;
+  }
+}
+
+/** Restore the standard Telegram header around the Mini App. */
+export function exitTelegramFullscreen(): boolean {
+  try {
+    if (!isTmaLib()) return false;
+    viewport.mount();
+    viewport.exitFullscreen().catch((err) => console.warn("[telegram] exitFullscreen failed", err));
+    return true;
+  } catch (err) {
+    console.warn("[telegram] exitFullscreen skipped", err);
+    return false;
+  }
+}
+
 /** Expand the Mini App to fill the viewport (AFTER the UI is ready). */
 export function readyTelegram(): void {
   try {
@@ -87,6 +120,7 @@ export function readyTelegram(): void {
   } catch {
     /* ignore */
   }
+  requestTelegramFullscreen();
 }
 
 export function bindBackButton(

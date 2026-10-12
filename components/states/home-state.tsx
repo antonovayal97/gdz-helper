@@ -50,7 +50,7 @@ export function HomeState({ onPickCamera, onPickGallery }: HomeStateProps) {
           </div>
           <Button size="xl" className="w-full max-w-xs" onClick={onPickCamera}>
             <Camera className="h-5 w-5" />
-            Сфотографировать задачу
+            Снять задачу
           </Button>
         </div>
       </Card>
