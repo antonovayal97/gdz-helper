@@ -43,6 +43,16 @@ export function initTelegram(): TelegramEnv {
     isTMA = false;
   }
 
+  // Flag the environment on <html> so CSS can adjust the layout for
+  // Telegram users only (see --tg-top-offset in globals.css).
+  if (isTMA) {
+    try {
+      document.documentElement.classList.add("in-tg");
+    } catch {
+      /* ignore */
+    }
+  }
+
   let initDataRaw: string | null = null;
   let startParam: string | null = null;
   if (isTMA) {

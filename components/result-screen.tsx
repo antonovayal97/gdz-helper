@@ -139,7 +139,7 @@ export function ResultScreen({ id, batchIds, batchNumbers }: ResultScreenProps) 
 
   if (!solution) {
     return (
-      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-4 px-5 pt-4">
+      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-4 px-5 pt-[calc(1rem+env(safe-area-inset-top,0px)+var(--tg-top-offset,0px))]">
         <div className="flex items-center gap-2">
           <button
             onClick={goHome}
@@ -166,10 +166,10 @@ export function ResultScreen({ id, batchIds, batchNumbers }: ResultScreenProps) 
   const mode = explanationModeLabel(solution.explanationMode);
 
   return (
-    // pt/pb include the safe-area insets because the app runs Telegram in
-    // fullscreen mode (no native header/footer), so the status bar and the
-    // home indicator overlap the webview.
-    <div className="mx-auto min-h-dvh w-full max-w-md animate-fade-in px-5 pb-[calc(4rem+env(safe-area-inset-bottom))] pt-[calc(1rem+env(safe-area-inset-top))]">
+    // pt/pb include the safe-area insets and the Telegram header offset
+    // (--tg-top-offset) because the app runs Telegram in fullscreen mode:
+    // the status bar and the home indicator overlap the webview.
+    <div className="mx-auto min-h-dvh w-full max-w-md animate-fade-in px-5 pb-[calc(4rem+env(safe-area-inset-bottom))] pt-[calc(1rem+env(safe-area-inset-top,0px)+var(--tg-top-offset,0px))]">
       {/* Header */}
       <div className="flex items-center justify-between">
         <button

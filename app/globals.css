@@ -18,6 +18,18 @@
   --app-border: color-mix(in srgb, var(--app-fg) 12%, transparent);
 }
 
+/*
+  Extra header offset for Telegram users (lib/client/telegram.ts adds the
+  `in-tg` class on <html> when running inside a Mini App). Used in page
+  headers: padding-top: calc(base + env(safe-area-inset-top) + var(--tg-top-offset)).
+*/
+:root {
+  --tg-top-offset: 0px;
+}
+:root.in-tg {
+  --tg-top-offset: 50px;
+}
+
 @media (prefers-color-scheme: dark) {
   :root:not(.tg-light) {
     --fallback-bg: #0f0f13;
